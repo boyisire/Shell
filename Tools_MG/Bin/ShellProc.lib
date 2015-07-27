@@ -1,0 +1,1679 @@
+#加载公共函数
+. ./Bin/ShellFunc.lib
+
+#==========================================SC Config======================================#
+#DB Info
+LOCAL_DB_A="chmap/chmap@aoldbs"		#A中心
+LOCAL_DB_B="chmap/chmap@boldbs"		#B中心
+LOCAL_DB_H="chhis/chhis@ahisdbs"	#历史库
+
+#File Info
+FILE_DIR="$HOME/TOOLS"			#程序主目录
+FILE_LOG="/app/log"			#日志文件
+FILE_CFG="${FILE_DIR}/Cfg/MENU.ini"	#配置列表
+FILE_PUB="${FILE_DIR}/Bin/ShellProc.lib" #公共程序
+
+#==========================================YY Config======================================#
+#DB Info
+LOCAL_DB_A="chmap/chmap@arptdbs"                #A中心
+LOCAL_DB_B="chmap2/chmap2@arptdbs"              #B中心
+LOCAL_DB_H="chmap/chmap@admas"                  #历史库
+
+#File Info
+FILE_DIR="$HOME/bin/TOOLS"                  #程序主目录
+FILE_LOG="/app/log"                     #日志文件
+FILE_CFG="${FILE_DIR}/Cfg/MENU.ini"     #配置列表
+FILE_PUB="${FILE_DIR}/Bin/ShellProc.lib" #公共程序
+
+
+#==========================================Function====================================#
+#####################################=####>系统检测<####################################
+PRO_QSJC(){
+#************************************************
+#** 功能:清算检查
+#** 作者:FP
+#** 日期:2014-8-21 14:40:48
+#** 格式:PRO_QSJC "交易码" "交易系统"
+#***********************************************
+LOCAL_SQL_1="SELECT t.paramvalue FROM cm_param t WHERE t.paramcode='CLEARDATE';"
+LOCAL_SQL_2="select '收到日切时间[' || t.recv_date_time || ']', '	日切开始时间[' || t.change_date_time || ']', '	更改前日切日期[' || t.before_acc_date || ']', '	更改后日切日期[' || t.acc_date || ']' from Ol_Daychange t WHERE t.recv_date_time>(select to_char ((sysdate-1),'YYYYmmdd')||'000000' from dual);"
+LOCAL_SQL_3="select count(*) from Ol_Daychange t WHERE t.recv_date_time>(select to_char ((sysdate-1),'YYYYmmdd')||'000000' from dual);"
+
+QSRQ=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_1"`;
+QSTZ=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_2"`;
+QSTZC=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_3"`;
+QSTZCT=`echo "$QSTZC" | sed 's/ //g'`;
+echo ""
+printf "\t\t%s\n"   "注意检查有没有收到日切通知,清算日期应该为当天日期的下一天"
+printf "\t\t%s\n"   "当天的日期为:`date +%Y%m%d`"
+printf "\t\t%s\n"   "渠道清算日期:$QSRQ";
+if [ "$QSTZCT" -eq "0" ]
+then 
+printf "\t\t%s\n" "警告：渠道没有收到日切通知，请检查！"
+fi
+printf "\t\t%s\n" "$QSTZ";
+grep load ${FILE_LOG}/Day* | tail -n 2 | awk -F "|" '{print $1 $2 $6}';
+}
+PRO_HS()
+{
+#************************************************
+#** 功能:耗时检查
+#** 作者:FP
+#** 日期:2014-8-22 9:52:42
+#** 格式:PRO_HS 
+#***********************************************
+         echo "ECIF     平均耗时："`grep 耗时 $FILE_LOG/*.ECIF | awk -F "[" '{print $3}' | awk -F "]" '{print $1}' | tail -n 100 | awk '{sum+=$0}END{print sum/NR}'`"（毫秒）"
+         echo "ZJQS     平均耗时："`grep 耗时 $FILE_LOG/*.ZJQS | awk -F "[" '{print $3}' | awk -F "]" '{print $1}' | tail -n 100 | awk '{sum+=$0}END{print sum/NR}'`"（毫秒）"
+         echo "TOKEN    平均耗时："`grep 耗时 $FILE_LOG/*.TOKEN | awk -F "[" '{print $3}' | awk -F "]" '{print $1}' | tail -n 100 | awk '{sum+=$0}END{print sum/NR}'`"（毫秒）"
+         echo "ZHIWEN   平均耗时："`grep 耗时 $FILE_LOG/*.ZHIWEN | awk -F "[" '{print $3}' | awk -F "]" '{print $1}' | tail -n 100 | awk '{sum+=$0}END{print sum/NR}'`"（毫秒）"
+         echo "185   平均耗时："`grep 耗时 $FILE_LOG/*.185 | awk -F "[" '{print $3}' | awk -F "]" '{print $1}' | tail -n 100 | awk '{sum+=$0}END{print sum/NR}'`"（毫秒）"
+
+}
+PRO_BLO(){
+#************************************************
+#** 功能:表空间使用情况
+#** 作者:FP
+#** 日期:2014-8-22 9:53:49
+#** 格式:PRO_BLO 
+#***********************************************
+LOCAL_SQL_15="
+col 表空间名 for a25;
+col 表空间大小 for 99999999999999;
+col 已使用空间 for 99999999999999;
+col 使用比 for 9999999999999999;
+col 最大块 for 9999999999999999;
+			  
+SELECT 
+UPPER(F.TABLESPACE_NAME) 表空间名,
+D.TOT_GROOTTE_MB 表空间大小 ,
+D.TOT_GROOTTE_MB - F.TOTAL_BYTES 已使用空间 ,
+TO_CHAR(ROUND((D.TOT_GROOTTE_MB - F.TOTAL_BYTES) / D.TOT_GROOTTE_MB * 100, 2), '990.99') 使用比,
+F.TOTAL_BYTES 空闲空间 ,F.MAX_BYTES 最大块   
+FROM (SELECT TABLESPACE_NAME,ROUND(SUM(BYTES) / (1024 * 1024), 2) TOTAL_BYTES,ROUND(MAX(BYTES) / (1024 * 1024), 2) MAX_BYTES  FROM SYS.DBA_FREE_SPACE GROUP BY TABLESPACE_NAME) F,(SELECT DD.TABLESPACE_NAME,ROUND(SUM(DD.BYTES) / (1024 * 1024), 2) TOT_GROOTTE_MB  FROM SYS.DBA_DATA_FILES DD GROUP BY DD.TABLESPACE_NAME) D WHERE D.TABLESPACE_NAME = F.TABLESPACE_NAME ORDER BY 4 DESC;"
+#echo "执行语句【$LOCAL_SQL_15】"
+
+echo ""
+echo "--------                      ------------   ------------ ------   ----------    --------"
+echo "表空间名                      表空间大小(M)  已使用空间(M)使用比%  空闲空间(M)   最大块(M)" 
+echo "--------                      ------------   ------------ ------   ----------    --------"
+
+if [ "$1" = "A" ]
+then
+LOCAL_DB=$LOCAL_DB_A;
+else
+LOCAL_DB=$LOCAL_DB_B;
+fi
+
+BLO=`Fun_DB "$LOCAL_DB" "$LOCAL_SQL_15"`;
+
+echo "$BLO"
+echo "--------                      ------------   ------------ ------   ----------    --------"
+
+}
+PRO_DAYEND(){
+#************************************************
+#** 功能:日终检查
+#** 作者:FP
+#** 日期:2014-8-22 10:29:00
+#** 格式:PRO_DAYEND 
+#***********************************************
+    LOCAL_SQL_14="select to_char ((sysdate-1),'YYYYmmdd') from dual;"
+    DDTY=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_14"`;
+    
+    if [ "$1" = "A" ]
+    then
+    	LOCAL_DB=$LOCAL_DB_A;
+    else
+    	LOCAL_DB=$LOCAL_DB_B;
+    fi
+    LOCAL_SQL_13="select t.orderid||'     ',t.describe||'  ',decode(t.status,'0','初始','1','成功','2','失败')  from dc_trands_log t where t.tran_date='$DDTY' order by t.orderid;"
+    echo ""
+    echo "--------       ----------------         ----------------"
+    echo "顺序           操作信息                        状态"
+    echo "--------       ----------------         ----------------"
+    DAY_CT=`Fun_DB "$LOCAL_DB" "$LOCAL_SQL_13"`;
+    echo "--------       ----------------         ----------------"
+    echo "$DAY_CT"
+}
+
+PRO_DiskFree(){
+#************************************************
+#** 功能:磁盘使用空间检查
+#** 作者:FP
+#** 日期:2014-8-22 11:00:57
+#** 格式:PRO_DiskFree
+#***********************************************
+    printf "\t\t%s\n" "----------    ---------      ---- -----    ----- ------ ------ ---"
+    echo ""
+    df -k | awk '{printf "\t\t%s\n", $0}'
+    
+    printf "\t\t%s\n" "----------    ---------      ---- -----    ----- ------ ------ ---"
+}
+
+PRO_TuxPQ()
+{
+#************************************************
+#** 功能:Tux服务及队列监控
+#** 作者:Hu
+#** 日期:2014-8-22 9:52:42
+#** 格式:PRO_TuxPQ 
+#***********************************************
+trap 'echo "退出!";break' 1 2 3 6 14 15
+DT=`Fun_Now "YYYYMMDD"`
+FilePQ="${FILE_LOG}/pq.${DT}.txt"
+tail -f ${FilePQ}
+trap "" 1 2 3 15
+}
+
+##########################################>数据统计<#######################################
+PRO_CountTlr(){
+#************************************************
+#** 功能:统计新增柜员数
+#** 作者:Hu
+#** 日期:2014-8-22 10:17:16
+#** 格式:PRO_CountTlr 
+#***********************************************
+LOCAL_SQL_GYSL="select count(*) from ol_operrulepermit  a where a.status='1' and a.operno in (select operno from ol_operrole t where t.adddate='20130331' and t.sysno='99200000000'and t.rolestatus='1');"
+LOCAL_SQL_GYQXSL="select count(*) from ol_operrole t where t.adddate='20130331' and t.sysno='99200000000'and t.rolestatus='1';"
+NE=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_GYSL"`;
+NR=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_GYQXSL"`;
+echo ""
+printf "\t\t新增柜员数量      [$NR]\n"
+printf "\t\t新增对应权限数量  [$NE]\n"
+}
+
+PRO_CountOperBox(){
+#************************************************
+#** 功能:统计柜员签到及尾箱领用
+#** 作者:Hu
+#** 日期:2014-8-22 11:26:41
+#** 格式:PRO_CountOperBox 
+#***********************************************
+LOCAL_SQL_GSGY="SELECT COUNT(*) FROM OL_OPERSIGN WHERE SIGNSTATUS='1' AND SYSNO='99200000000';"
+LOCAL_SQL_GDGY="SELECT COUNT(*) FROM OL_OPERSIGN WHERE SIGNSTATUS='1' AND SYSNO='99340000000';"
+LOCAL_SQL_WXA="SELECT COUNT(*) FROM PBX_BOX_MGMT WHERE BOX_NO='01' AND stat='1' and INST_NO not like '%Z';"
+LOCAL_SQL_WXZ="SELECT COUNT(*) FROM PBX_BOX_MGMT WHERE stat='1' and INST_NO not like '%Z';"
+
+LOCAL_SQL_LJJZGY="SELECT COUNT(*) FROM OL_OPERSIGN WHERE SIGNSTATUS='1' AND SYSNO='99700010000';"
+
+GSGY=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_GSGY"|sed 's/ //g'`; 
+GDGY=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_GDGY"|sed 's/ //g'`;
+WXA=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_WXA"|sed 's/ //g'`;
+WXZ=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_WXZ"|sed 's/ //g'`;
+LJJZGY=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_LJJZGY"|sed 's/ //g'`;
+
+printf "\t\t公司柜员签到数量      [$GSGY]\n"
+printf "\t\t个贷柜员签到数量      [$GDGY]\n"
+printf "\t\t机构尾箱领用数量      [$WXZ]\n"   
+printf "\t\t柜员尾箱领用数量      [$WXA]\n"
+printf "\t\t逻辑集中柜员签到数量  [$LJJZGY]\n"
+}
+
+PRO_CSTJ(){
+#************************************************
+#** 功能:统计超时交易及流控笔数
+#** 作者:Hu
+#** 日期:2014-8-22 11:26:41
+#** 格式:PRO_CSTJ "开始时间" "结束时间[默认为当前时间]"
+#***********************************************
+B_TIME=`echo $1|sed -e 's/ //g'`	#开始时间
+E_TIME=`echo $2|sed -e 's/ //g'`	#结束时间
+if [ $# -lt 2 ]
+then
+	E_TIME=`echo "select to_char(sysdate,'YYYYMMDDHH24MI') from dual;"|sqlplus -S $LOCAL_DB_B|grep -v "\-"|grep -v "TO_CHAR"|grep -v "^$"`
+fi
+
+#日志文件
+LogFile=$FILE_DIR/Log/CSTJ.${B_TIME}_${E_TIME}.log
+#当天流水表
+Trans_Tab=`Fun_TransTab`
+
+#按时间段统计超时笔数及流控笔数
+SQL_CSTJ="
+set pages 200;
+set termout off;
+set feedback off;
+with t as (select * from ${Trans_Tab} t where t.localdatetime>='${B_TIME}' and t.localdatetime<='${E_TIME}'),
+htcs5 as (select '后台超时-5秒' 科目,count(*) 笔数 from t where t.backtime>=5000),
+htcs10 as (select '后台超时-10秒' 科目,count(*) 笔数 from t where t.backtime>=10000),
+htcs20 as (select '后台超时-20秒' 科目,count(*) 笔数 from t where t.backtime>=20000),
+htcs50 as (select '后台超时-50秒' 科目,count(*) 笔数 from t where t.backtime>=50000),
+htcs60 as (select '后台超时-60秒' 科目,count(*) 笔数 from t where t.backtime>=60000),
+htcs100 as (select '后台超时-100秒'  科目,count(*) 笔数 from t where t.backtime>=100000),
+htcs300 as (select '后台超时-300秒'  科目,count(*) 笔数 from t where t.backtime>=300000),
+qdcs5 as (select '渠道超时-5秒' 科目,count(*) 笔数 from t where t.protime>=5000),
+qdcs10 as (select '渠道超时-10秒' 科目,count(*) 笔数 from t where t.protime>=10000),
+qdcs20 as (select '渠道超时-20秒' 科目,count(*) 笔数 from t where t.protime>=20000),
+qdcs50 as (select '渠道超时-50秒' 科目,count(*) 笔数 from t where t.protime>=50000),
+qdcs60 as (select '渠道超时-60秒'  科目,count(*) 笔数 from t where t.protime>=60000),
+qdcs100 as (select '渠道超时-100秒'  科目,count(*) 笔数 from t where t.protime>=100000),
+qdcs300 as (select '渠道超时-300秒'  科目,count(*) 笔数 from t where t.protime>=300000),
+lk1 as (select '流控-10000001' 科目,count(*) 笔数 from t where t.cmpretcode='10000001' ),
+lk2 as (select '流控-10000002' 科目,count(*) 笔数 from t where t.cmpretcode='10000002' )
+select * from htcs5
+union all
+select * from htcs10
+union all
+select * from htcs20
+union all
+select * from htcs50
+union all
+select * from htcs60
+union all
+select * from htcs100
+union all
+select * from htcs300
+union all
+select * from qdcs5
+union all
+select * from qdcs10
+union all
+select * from qdcs20
+union all
+select * from qdcs50
+union all
+select * from qdcs60
+union all
+select * from qdcs100
+union all
+select * from qdcs300
+union all
+select * from lk1
+union all
+select * from lk2
+;"
+
+
+printf "===========================统计超时交易及流控笔数 <$B_TIME - $E_TIME>===========================\n"
+printf "%-23s%-10s\n" "超时名称" "超时笔数"
+echo "-----------------------A-----------------------"
+Fun_DB "$LOCAL_DB_A"  "$SQL_CSTJ"|tee ${LogFile}
+echo ""
+#printf "%-23s%-10s\n" "超时名称" "超时笔数"
+echo "-----------------------B-----------------------"
+Fun_DB "$LOCAL_DB_B" "$SQL_CSTJ"|tee -a ${LogFile}
+echo ""
+
+echo "=====================> 统计汇总 <================"
+#printf "=============================> 统计汇总 <=============================\n"
+cat ${LogFile}|grep -v "^$"|grep -v "\-\-"|grep -v "科目"|grep  -v "流控-"|awk '{count[$1]+=$2} END {for(name in count) printf "%-s\t\t%-s\n",name,count[name]}'|sort
+cat ${LogFile}|grep -v "^$"|grep -v "\-\-"|grep -v "科目"|grep  "流控-"|awk '{sum+=$2} END{ printf "流控笔数\t\t%-s\n",sum}'
+echo ""
+echo "OK!"
+}
+
+PRO_LKTransCount(){
+#************************************************
+#** 功能:流控交易统计
+#** 作者:Hu
+#** 日期:2014-8-26 15:40:48
+#** 格式:PRO_LKTransCount "开始时间" "结束时间[默认为当前时间]" 
+#***********************************************
+B_TIME=`echo $1|sed -e 's/ //g'`	#开始时间
+E_TIME=`echo $2|sed -e 's/ //g'`	#结束时间
+if [ $# -lt 2 ]
+then
+	E_TIME=`echo "select to_char(sysdate,'YYYYMMDDHH24MI') from dual;"|sqlplus -S $LOCAL_DB_B|grep -v "\-"|grep -v "TO_CHAR"|grep -v "^$"`
+fi
+
+#日志文件
+LogFile=$FILE_DIR/Log/LKTransCount.${B_TIME}_${E_TIME}.log
+#当天流水表
+Trans_Tab=`Fun_TransTab`
+
+SQL_LKTransCount="
+col 受理系统 for a15;
+col 交易码 for a10;
+col 交易码 for a10;
+col 流控码 for a10;
+col 交易笔数 for a10;
+SELECT t.recesysno 受理系统,t.cmpretcode 流控码,t.receprodcode 交易码,p.tran_name 交易名称,to_char(COUNT(*)) 交易笔数 
+  FROM ${Trans_Tab} t ,ch_trans_cfg p 
+ WHERE t.receprodcode=p.tran_code 
+   AND T.RECESYSNO = P.SYS_ID
+   AND t.localdatetime>='${B_TIME}' AND t.localdatetime<='${E_TIME}'
+   AND (t.cmpretcode='10000002' OR t.cmpretcode='10000001') 
+ GROUP BY t.receprodcode,p.tran_name,t.recesysno,t.cmpretcode 
+ ORDER BY 5
+;"
+
+
+
+printf "===========================流控交易统计 <$B_TIME - $E_TIME>===========================\n"
+printf "%-15s%-10s%-10s%-40s%-10s\n" "受理系统" "流控码" "交易码" "交易名称" "交易笔数"
+echo "----------------------------------------A------------------------------------------"
+Fun_DB "$LOCAL_DB_A"  "$SQL_LKTransCount"|tee ${LogFile}
+echo ""
+echo ""
+printf "%-15s%-10s%-10s%-40s%-10s\n" "受理系统" "流控码" "交易码" "交易名称" "交易笔数"
+echo "----------------------------------------B------------------------------------------"
+Fun_DB "$LOCAL_DB_B" "$SQL_LKTransCount"|tee -a ${LogFile}
+echo ""
+echo "OK!"
+}
+
+PRO_CSTransCount(){
+#************************************************
+#** 功能:超时交易统计
+#** 作者:Hu
+#** 日期:2014-8-22 11:26:41
+#** 格式:PRO_CSTransCount "开始时间" "结束时间[默认为当前时间]" "查询标志(默认空只查超时,1为全部)"
+#***********************************************
+B_TIME=`echo $1|sed -e 's/ //g'`	#开始时间
+E_TIME=`echo $2|sed -e 's/ //g'`	#结束时间
+if [ $# -lt 2 ]
+then
+	E_TIME=`echo "select to_char(sysdate,'YYYYMMDDHH24MI') from dual;"|sqlplus -S $LOCAL_DB_B|grep -v "\-"|grep -v "TO_CHAR"|grep -v "^$"`
+fi
+
+#日志文件
+LogFile=$FILE_DIR/Log/CSTransCount.${B_TIME}_${E_TIME}.log
+#当天流水表
+Trans_Tab=`Fun_TransTab`
+#超时时长
+Time_Num=20000
+
+#如果参数3为空时，仅查超时交易,否则查全部.
+if [ -z "$3" ]
+then
+	#按交易码统计超时笔数
+	SQL_CSTransCount="
+	col 受理系统 for a15;
+	col 交易码 for a10;
+	col 交易名称 for a50;
+	col 交易笔数 for a10;
+	SELECT t.recesysno 受理系统,t.receprodcode 交易码,p.tran_name 交易名称,to_char(COUNT(*)) 交易笔数 
+	  FROM ${Trans_Tab} t ,ch_trans_cfg p 
+	 WHERE t.receprodcode=p.tran_code 
+           AND T.RECESYSNO = P.SYS_ID
+	   AND t.localdatetime>='${B_TIME}' AND t.localdatetime<='${E_TIME}'
+	   AND (t.protime>=${Time_Num} OR t.backtime>=${Time_Num})
+	 GROUP BY t.receprodcode ,p.tran_name,t.recesysno 
+	 ORDER BY 4
+	;"
+
+else
+	#按交易码统计超时笔数
+	SQL_CSTransCount="
+	col 受理系统 for a15;
+	col 交易码 for a10;
+	col 交易名称 for a50;
+	col 交易笔数 for a10;
+	SELECT t.recesysno 受理系统,t.receprodcode 交易码,p.tran_name 交易名称,to_char(COUNT(*)) 交易笔数 
+	  FROM ${Trans_Tab} t ,ch_trans_cfg p 
+	 WHERE t.receprodcode=p.tran_code 
+	   AND T.RECESYSNO = P.SYS_ID
+	   AND t.localdatetime>='${B_TIME}' AND t.localdatetime<='${E_TIME}'
+	 GROUP BY t.receprodcode,p.tran_name,t.recesysno 
+	 ORDER BY 4
+	;"
+
+fi
+
+
+printf "===========================超时交易统计 <$B_TIME - $E_TIME>===========================\n"
+#echo "【A中心】"
+printf "%-15s%-10s%-50s%-10s\n" "受理系统" "交易码" "交易名称" "交易笔数"
+echo "----------------------------------------A------------------------------------------"
+Fun_DB "$LOCAL_DB_A"  "$SQL_CSTransCount"|tee ${LogFile}
+echo ""
+echo ""
+#printf "\t********************* B中心 ***************\n"
+#echo "【B中心】"
+printf "%-15s%-10s%-50s%-10s\n" "受理系统" "交易码" "交易名称" "交易笔数"
+echo "----------------------------------------B------------------------------------------"
+Fun_DB "$LOCAL_DB_B" "$SQL_CSTransCount"|tee -a ${LogFile}
+echo ""
+echo "OK!"
+}
+
+PRO_CSMinuteCount(){
+#************************************************
+#** 功能:每分钟交易统计
+#** 作者:Hu
+#** 日期:2014-8-26 11:44:23
+#** 格式:PRO_CSMinuteCount "开始时间" "结束时间[默认为当前时间]" "查询标志(默认空只查超时,1为全部)"
+#***********************************************
+B_TIME=`echo $1|sed -e 's/ //g'`	#开始时间
+E_TIME=`echo $2|sed -e 's/ //g'`	#结束时间
+if [ $# -lt 2 ]
+then
+	E_TIME=`echo "select to_char(sysdate,'YYYYMMDDHH24MI') from dual;"|sqlplus -S $LOCAL_DB_B|grep -v "\-"|grep -v "TO_CHAR"|grep -v "^$"`
+fi
+
+
+#日志文件
+LogFile=$FILE_DIR/Log/CSMinuteCount.${B_TIME}_${E_TIME}.log
+#当天流水表
+Trans_Tab=`Fun_TransTab`
+#超时时长
+Time_Num=20000
+
+#如果参数3为空时，仅查超时交易,否则查全部.
+if [ -z "$3" ]
+then
+
+#按时间段统计超时笔数及流控笔数
+SQL_CSMinuteCount="
+col 时间点 for a15;
+col 交易笔数 for a10;
+SELECT substr(t.localdatetime,1,12) 时间点,TO_CHAR(COUNT(*)) 交易笔数 
+  FROM ${Trans_Tab} t 
+ WHERE t.localdatetime>='${B_TIME}' AND t.localdatetime<='${E_TIME}'
+   AND (t.protime>=${Time_Num} OR t.backtime>=${Time_Num})
+ GROUP BY substr(t.localdatetime,1,12) ORDER BY 1
+;"
+
+else
+
+#按时间段统计超时笔数及流控笔数
+SQL_CSMinuteCount="
+col 时间点 for a15;
+col 交易笔数 for a10;
+SELECT substr(t.localdatetime,1,12) 时间点,TO_CHAR(COUNT(*)) 交易笔数 
+  FROM ${Trans_Tab} t 
+ WHERE t.localdatetime>='${B_TIME}' AND t.localdatetime<='${E_TIME}'
+ GROUP BY substr(t.localdatetime,1,12) ORDER BY 1
+;"
+fi
+
+printf "===========================每分钟交易统计 <$B_TIME - $E_TIME>===========================\n"
+printf "%-15s%-10s\n" "时间点" "交易笔数"
+echo "----------------------------------------A------------------------------------------"
+Fun_DB "$LOCAL_DB_A"  "$SQL_CSMinuteCount"|tee ${LogFile}
+echo ""
+echo ""
+#printf "\t********************* B中心 ***************\n"
+#echo "【B中心】"
+printf "%-15s%-10s\n" "时间点" "交易笔数"
+echo "----------------------------------------B------------------------------------------"
+Fun_DB "$LOCAL_DB_B" "$SQL_CSMinuteCount"|tee -a ${LogFile}
+echo ""
+echo "OK!"
+}
+
+
+##########################################>快捷查询<#######################################
+PRO_ShowTransLog(){
+#************************************************
+#** 功能:查询交易日志
+#** 作者:Hu
+#** 日期:2014-8-21 18:01:40
+#** 格式:PRO_ShowTransLog "交易流水" "交易日期"
+#***********************************************
+
+SEQNO=$1
+TRANDATE=$2
+
+if [ -z "$SEQNO" ]
+then
+	echo "交易流水不能为空,请重新输入"
+	printf "交易流水:"
+	read SEQNO
+	TRANDATE=`Fun_Now "YYYYMMDD"`
+else	
+	if [ -z "$TRANDATE" ]
+	then
+		TRANDATE=`Fun_Now "YYYYMMDD"`
+	fi
+fi
+TransTabName=`Fun_TransTab`
+
+SQL_TransInfo="select 
+'交易时间:'||t.localdatetime||'|'||
+'交易机构:'||t.transdept||'|'||
+'柜 员 号:'||t.operno||'|'||
+'渠道响应码:'||t.cmpretcode||'|'||
+'后台响应码:'||t.cmpretcode||'|'||
+'渠道耗时:'||t.protime||'|'||
+'后台耗时:'||t.backtime||'|'||
+'进 程 号:'||t.pid||'|'||
+'流 水 号:'||t.sendtranid||'|'||
+'主机IP  :'||t.logip
+from ${TransTabName} t where t.sendtranid = '$SEQNO' and t.transdate = '$TRANDATE' and rownum=1;"
+
+#echo "SQL_TransInfo=${SQL_TransInfo}"
+LSCX=`Fun_DB "$LOCAL_DB_B" "$SQL_TransInfo"`;
+if [ "A$LSCX" == "A" ]
+then
+	LSCX=`Fun_DB "$LOCAL_DB_A" "$SQL_TransInfo"`;
+	if [ "A$LSCX" == "A" ]
+	then
+		echo "未找到流水号[$SEQNO]对应记录"
+	fi
+fi
+echo "======================================================================================"
+T_PID=`echo "$LSCX"|tr "|" "\n"|grep "进 程 号:"|awk -F ":" '{print $2}'`
+T_IP=`echo "$LSCX"|tr "|" "\n"|grep "主机IP"|awk -F ":" '{print $2}'`
+if [ ! -z "$T_PID" ]
+then
+	echo "-----------------交易信息------------------"
+	echo "$LSCX"|tr "|" "\n"
+	echo "-------------------------------------------"
+	#日志文件
+	Sys_LogDir="/app/log"
+	Sys_LogFile=`grep -l "$SEQNO" ${Sys_LogDir}/${T_PID}*`
+		
+	if [ "${LOCAL_IP}" = "${T_IP}" ]
+	then
+		FileCnt=`grep -l $SEQNO ${Sys_LogFile}|wc -l|sed 's/ //g'`
+		if [ $FileCnt -eq 1 ]
+		then
+			echo "查找语句< grep ${SEQNO} ${T_PID}* >"
+			printf "是否打开日志文件<$Sys_LogFile>查看详细信息[Y-是|N-否(默认)]:"
+			read Input
+			if [ "${Input}" = "Y" ]
+			then
+				B_Line=`grep -n "${SEQNO}" "${Sys_LogFile}"|head -n 1|cut -d':' -f1`
+				E_Line=`grep -n "${SEQNO}" "${Sys_LogFile}"|tail -n 1|cut -d':' -f1`
+				B_Line=`Fun_BC "$B_Line-5"`
+				E_Line=`Fun_BC "$E_Line+20"`	
+				echo "B_Line=$B_Line"
+				echo "E_Line=$E_Line"
+				echo "Sys_LogFile=$Sys_LogFile"				
+				sed -n ${B_Line},${E_Line}p ${Sys_LogFile}
+			else
+				echo "已退出!"
+			fi
+			
+		else
+			echo "查找语句< grep ${SEQNO} ${T_PID}* >"
+			echo "文件名列表："
+			ls ${Sys_LogFile}
+			printf "是否要打开日志文件查看详细信息[是-请直接复制文件名,否-回车即可]:"
+			read Input
+			if [ ! -z "${Input}" ]
+			then
+				if [ -s "${Input}" ]
+				then 
+					Sys_LogFile="${Input}"					
+					#echo "Sys_LogFile=<$Sys_LogFile>"
+					B_Line=`grep -n "${SEQNO}" "${Sys_LogFile}"|head -n 1|cut -d':' -f1`
+					E_Line=`grep -n "${SEQNO}" "${Sys_LogFile}"|tail -n 1|cut -d':' -f1`
+					B_Line=`Fun_BC "$B_Line-5"`
+					E_Line=`Fun_BC "$E_Line+20"`
+					#echo "B_Line=$B_Line"
+					#echo "E_Line=$E_Line"
+					#echo "Sys_LogFile=$Sys_LogFile"
+					sed -n ${B_Line},${E_Line}p ${Sys_LogFile}
+				else
+					echo "文件名<${Input}>有误,请重新输入."
+				fi
+			else
+				echo "已退出!"
+			fi		
+		fi
+	else
+		echo "该日志不在当前主机."
+		echo "请到服务器[${T_IP}]的日志目录下执行该语句< grep $SEQNO ${T_PID}* >查找."
+	fi
+	#echo "查找语句： grep $SEQNO ${T_PID}*"
+		
+else
+	echo "$LSCX"
+fi
+
+}
+
+PRO_ShowTransCode(){
+#************************************************
+#** 功能:查询交易码
+#** 作者:Hu
+#** 日期:2014-8-21 17:33:34
+#** 格式:PRO_ShowTransCode "交易码" "业务系统"
+#***********************************************
+trap 'echo "退出!";break' 1 2 3 6 14 15
+CFGFILE="${FILE_DIR}/Cfg/TransCode.ini"
+TRANCODE=$1
+SYSID=$2
+
+if [ $# -lt 1 ]
+then
+	echo "传入参数有误,请检查配置文件<${FILE_CFG}>."
+    	echo "更新数据参数为:UPDATE"
+fi
+
+TRANS_SQL="
+SELECT
+a.sys_id||'|'||
+trim(a.tran_code)||'|'||
+trim(a.tran_name)||'|'||
+a.tran_status||'|'||
+b.flow_svc_cd||'|'||
+b.atom_trans_id||'|'||
+trim(b.flow_svc_desc)||'|'||
+trim(d.atom_svc_func_nm)||'|'||
+trim(d.atom_svc_nm)||'|'||
+d.atom_svc_so_nm
+FROM CH_TRANS_CFG a,MBS_FLOW_SVC_ATOM_TRANS b,MBS_ATOM_TRANS_SVC_RELATED c,MBS_ATOM_SVR_INF d
+WHERE a.tran_type=b.atom_trans_id
+AND b.atom_trans_id=c.atom_trans_id
+AND c.atom_svc_cd=d.atom_svc_cd;"
+
+if [ $1 = "UPDATE" ]
+then
+        echo "更新...."
+	Fun_DB "$LOCAL_DB_B" "$TRANS_SQL" >${CFGFILE}
+        echo "更新完毕!"
+else
+
+	#如果不写业务平台号，则为查询所有
+	if [ ! -z "$2" ]
+	then
+	cat $CFGFILE |grep $SYSID |grep $TRANCODE| awk -F "|" 'BEGIN {printf "%-13s%-13s%-13s%-13s%-13s%-13s%-13s%-13s%-13s%-13s\n%s","系统平台号","交易码","交易名称","状态","服务大类 ","服务小类","小类名称 ","函数名称 ","函数功能","函数库" ,"-------------------------------------------------------------------------------------------------------------------------------\n"}
+	#a.sys_id=业务系统平台号;a.tran_code=后台交易码;a.tran_name=交易名称;a.tran_status=状态;b.flow_svc_cd=服务大类;
+	#b.atom_trans_id=服务小类;b.flow_svc_desc=小类名称;d.atom_svc_func_nm=函数名称;d.atom_svc_nm=函数功能;d.atom_svc_so_nm=函数库
+	{SYS_ID=$1;TRAN_CODE=$2;TRAN_NAME=$3;TRAN_STATUS=$4;FLOW_SVC_CD=$5;ATOM_TRANS_ID=$6;FLOW_SVC_DESC=$7;ATOM_SVC_FUNC_NM=$8;ATOM_SVC_NM=$9;ATOM_SVC_SO_NM=$10}
+	{printf "%-12s%-8s%-20s%-2s%-6s%-10s%-25s%-20s%-25s%-15s\n",SYS_ID,TRAN_CODE,TRAN_NAME,TRAN_STATUS,FLOW_SVC_CD,ATOM_TRANS_ID,FLOW_SVC_DESC,ATOM_SVC_FUNC_NM,ATOM_SVC_NM,ATOM_SVC_SO_NM}'
+	
+	else
+	cat $CFGFILE |grep $TRANCODE | awk -F "|" 'BEGIN {printf "%-13s%-13s%-13s%-13s%-13s%-13s%-13s%-13s%-13s%-13s\n%s","系统平台号","交易码","交易名称","状态","服务大类 ","服务小类","小类名称 ","函数名称 ","函数功能","函数库" ,"-------------------------------------------------------------------------------------------------------------------------------\n"}
+	#a.sys_id=业务系统平台号;a.tran_code=后台交易码;a.tran_name=交易名称;a.tran_status=状态;b.flow_svc_cd=服务大类;
+	#b.atom_trans_id=服务小类;b.flow_svc_desc=小类名称;d.atom_svc_func_nm=函数名称;d.atom_svc_nm=函数功能;d.atom_svc_so_nm=函数库
+	{SYS_ID=$1;TRAN_CODE=$2;TRAN_NAME=$3;TRAN_STATUS=$4;FLOW_SVC_CD=$5;ATOM_TRANS_ID=$6;FLOW_SVC_DESC=$7;ATOM_SVC_FUNC_NM=$8;ATOM_SVC_NM=$9;ATOM_SVC_SO_NM=$10}
+	{printf "%-12s%-8s%-20s%-2s%-6s%-10s%-25s%-20s%-25s%-15s\n",SYS_ID,TRAN_CODE,TRAN_NAME,TRAN_STATUS,FLOW_SVC_CD,ATOM_TRANS_ID,FLOW_SVC_DESC,ATOM_SVC_FUNC_NM,ATOM_SVC_NM,ATOM_SVC_SO_NM}'
+	
+	fi    
+
+fi     
+trap "" 1 2 3 15                                                                                                                                                       
+}
+
+PRO_ShowErrCode(){
+#************************************************
+#** 功能:错误码查询
+#** 作者:Hu
+#** 日期:2014-8-21 16:47:19
+#** 格式:PRO_ShowErrCode "错误码"
+#***********************************************
+FILECFG_PT=~/pjcode/inc/atom/ChmErrCode.h      #平台
+FILECFG_WX=~/pjcode/inc/atom/Till_ErrCode.h    #尾箱
+FILECFG="${FILECFG_PT} ${FILECFG_WX}"
+
+if [ $# -lt 1 ]
+then
+        echo "传入参数有误,请检查配置文件<${FILE_CFG}>."
+else        
+	cat $FILECFG|sed -e 's/\*/ /g' -e 's/\// /g'|grep $1|awk 'BEGIN{printf "%-40s%-20s%-20s\n%s","错误标志","错误码","错误描述","------------------------------------------------------------------------------------\n"}{printf "%-40s%-20s%-20s\n",$2,$3,$4}'
+fi	
+}
+
+PRO_ShowOraCode(){
+#************************************************
+#** 功能:查询ORACLE错误信息
+#** 作者:Hu
+#** 日期:2014-8-21 17:17:43
+#** 格式:PRO_ShowOraCode "错误码"
+#***********************************************
+FILECFG="${FILE_DIR}/Cfg/OraCode.ini"
+
+if [ $# -lt 1 ]
+then
+         echo "传入参数有误,请检查配置文件<${FILE_CFG}>."
+else 
+	cat $FILECFG |grep $1|awk -F ":" 'BEGIN{printf "%-20s%-s\n%s","错误码","错误描述","-------------------------------------------------------\n"}{printf "%-20s%-s\n",$1,$2}'
+	echo "<要获取详细信息,请使用：oerr ora XXX>"
+fi
+}
+
+PRO_ShowCloumn()
+{
+#************************************************
+#** 功能:查询表字段中文信息
+#** 作者:Hu
+#** 日期:2014-8-22 16:03:27
+#** 格式:PRO_ShowCloumn "表名"
+#***********************************************
+TabName=$1
+printf "%-30s%-20s%-30s%-50s\n" "表英文名" "表中文名" "表字段名" "表字段释义"
+echo "----------------------------------------------------------------------------------------"
+SQL_ShowCloumn="
+col table_name for a30;
+col column_name for a30;
+col Tab_comments for a20;
+col comments for a50;
+select a.table_name,a.comments Tab_comments,b.column_name,b.comments from
+user_tab_comments a,user_col_comments b where a.table_name=b.table_name and
+a.table_name=upper('${TabName}');
+"
+Fun_DB "$LOCAL_DB_B" "$SQL_ShowCloumn"
+}
+
+PRO_PBX_CASH_REG(){
+#************************************************
+#** 功能:查询尾箱收付明细(PBX_CASH_REG)中交易的状态
+#** 作者:FP
+#** 日期:2014-8-22 14:31:03
+#** 格式:PRO_PBX_CASH_REG "交易日期" "交易机构(可为空)" "交易流水"
+#***********************************************
+LOCAL_SQL_1="SELECT TRAN_DATE||'	'||SEQNO||'	'||  SERNO||'	'||INST_NO||'	'||BOX_NO||'	'||CRDB||'	'||CASH_FLAG||'	'||TXAMT||'	'||STAT||'	'||SYNC_TIME FROM PBX_CASH_REG WHERE  "
+
+aDate=$1
+if [ "A" != "A$aDate" ]
+then
+aDate=`echo $aDate | sed -e 's/ //g'`
+LOCAL_SQL_1="$LOCAL_SQL_1  TRAN_DATE='$aDate' "
+fi
+
+aSEQNO=$2
+if [ "A" != "A$aSEQNO" ]
+then
+aSEQNO=`echo $aSEQNO | sed -e 's/ //g'`
+LOCAL_SQL_1="$LOCAL_SQL_1 AND SEQNO='$aSEQNO'"
+fi
+
+LOCAL_SQL_1="$LOCAL_SQL_1 ;"
+
+
+LOCAL_RES=`Fun_DB "$LOCAL_DB_A" "$LOCAL_SQL_1"`;
+
+
+echo "----			----		----	------		------	----	----	----	----	-------";
+echo "日期			流水		序号	机构号		尾箱号	收付	现转	金额	状态	同步时间";
+echo "$LOCAL_RES"
+}
+
+PRO_Web(){
+#************************************************
+#** 功能:常用网址查询
+#** 作者:Hu
+#** 日期:2014-8-22 16:36:51
+#** 格式:PRO_Web 
+#***********************************************
+printf "\t\t【监控地址】	    http://21.0.8.131:7001/home/login	<PE:qdjk123>\n"
+printf "\t\t【展华监控地址】    http://21.9.193.38:7080\n"
+printf "\t\t【Ukey登录】	    http://21.9.192.6:7001/smps/	<PE:id@qdglpt.ukey>\n"
+printf "\t\t【95580系统】	    http://10.229.43.252/unipost/\n"
+printf "\t\t【VSP登陆】         http://21.9.193.133			<PE:name@qdglpt.vsp>\n"
+printf "\t\t【渠道知识库】      http://192.168.60.227:8002/ccm/\n"
+printf "\t\t【渠道交易量统计】  http://192.168.60.227/cskh.php/\n"
+
+}
+
+
+PRO_ShowBoxZZInfo(){
+#************************************************
+#** 功能:查尾箱领用状态及轧帐情况
+#** 作者:Hu
+#** 日期:2014-8-22 16:03:27
+#** 格式:PRO_ShowBoxZZInfo "交易日期"
+#***********************************************
+TransDate=$1
+if [ -z "$TransDate" ]
+then
+	TransDate=`Fun_Now "YYYYMMDD"`
+fi
+printf "%-14s%-12s%-12s%-14s%-20s%-20s%-15s\n" "本日领用总数" "已上缴总数" "未上缴总数" "完成轧账总数" "只完成现金轧账总数" "只完成单证轧账总数" "未完成轧账总数"
+echo "------------------------------------------------------------------------------------------------------"
+
+SQL_BOXZZINFO="
+col 本日领用总数 for 999999999999;
+col 已上缴总数 for 999999999999;
+col 未上缴总数 for 999999999999;
+col 完成轧账总数 for 999999999999;
+col 只完成现金轧账总数 for 999999999999;
+col 只完成单证轧账总数 for 999999999999;
+col 未完成轧账总数 for 999999999999;
+
+select
+       count(*) as 本日领用总数,
+       count(case when a.stat = '2' then 1 else null end) as 已上缴总数,
+       count(case when a.stat = '1' then 1 else null end) as 未上缴总数,
+       count(case when a.stat = '2' or (a.cash_flag = '0' and a.cert_flag = '0') then 1 else null end) as 完成轧账总数,
+       count(case when a.stat = '1' and a.cash_flag = '0' and a.cert_flag = '1' then 1 else null end) as 只完成现金轧账总数 ,
+       count(case when a.stat = '1' and a.cash_flag = '1' and a.cert_flag = '0' then 1 else null end) as 只完成单证轧账总数 ,
+       count(case when a.stat = '1' and a.cash_flag = '1' and a.cert_flag = '1' then 1 else null end) as 未完成轧账总数
+from pbx_box_mgmt a
+where a.draw_date = '${TransDate}' and a.inst_no not like '%Z' and a.stat in ('1','2')
+;"
+Fun_DB "$LOCAL_DB_B" "$SQL_BOXZZINFO"
+
+}
+
+PRO_ShowAccStat(){
+#************************************************
+#** 功能:根据流水查询账号
+#** 作者:Hu
+#** 日期:2014-8-22 17:45:34
+#** 格式:PRO_ShowAccStat "交易日期" "交易流水"
+#***********************************************
+Tran_Date=$1
+Tran_Seqno=$2
+
+#Config Info
+#账号标志
+Flag1="INACCT"
+Flag2="ACCOUNT_NO"
+Flag3="ACC_5"
+Flag4="ACC5"
+
+#文件信息
+ExecFile="${FILE_DIR}/Bin/saf_select"
+DateFile="${FILE_DIR}/Dat/showzh.dat"
+LogFile="${FILE_DIR}/Log/${Tran_Date}_${Flag2}.log"
+TmpFile=".Tmp.txt"
+
+Dt=`Fun_Now "YYYYMMDDHHMISS"`
+printf "%-10s%-20s%-12s%-18s\n" "交易日期" "流水号" "账号类别" "账  号"
+echo "==========================================================="
+
+#查询账号状态
+Sub_ShowZH()
+{
+Sub_Tran_Date=$1	#交易日期
+Sub_Tran_Seqno=$2	#交易流水
+${ExecFile} ${Sub_Tran_Date} ${Sub_Tran_Seqno} 2>${TmpFile}
+Tran_Account=`grep $Flag1 ${TmpFile}`
+if [ -S $Tran_Account ]
+then
+	Tran_Account=`grep $Flag2 ${TmpFile}`
+	if [ -S $Tran_Account ]
+	then
+		Tran_Account=`grep $Flag3 ${TmpFile}`
+	    	if [ -S $Tran_Account ]
+	    	then
+			Tran_Account=`grep $Flag4 ${TmpFile}`
+	        	if [ -S $Tran_Account ]
+	        	then
+	       			Tran_Account="ACCOUNT   无"
+	        	fi
+		fi
+	fi
+fi
+
+Tran_Account_No=`echo $Tran_Account|awk '{print $2}'`
+Tran_Account_Stat=`echo $Tran_Account|awk '{print $1}'`
+printf "%-10s%-20s%-12s%-18s\n" "$Tran_Date" "$Tran_Seqno" "$Tran_Account_Stat" "$Tran_Account_No"|tee -a ${LogFile}
+}
+
+if [ -z "${Tran_Date}" -o -z "${Tran_Seqno}" ]
+then
+	if [ ! -f ${DateFile} ]
+	then
+		echo "请确认数据文件<$DateFile>是否存在."
+	else
+		while read line
+		do
+	    		Tran_Date=`echo $line|awk '{print $1}'`
+	    		Tran_Seqno=`echo $line|awk '{print $2}'`
+			Sub_ShowZH "${Tran_Date}" "${Tran_Seqno}"
+		done <$DateFile
+	fi
+else
+	Sub_ShowZH "${Tran_Date}" "${Tran_Seqno}"
+fi
+
+#如果存在文件,则对其进行备份
+if [ -f ${LogFile} ]
+then
+    mv ${LogFile} ${LogFile}.${Dt}
+fi
+}
+
+
+PRO_TransStat(){
+#************************************************
+#** 功能:查询尾箱交易流水状态
+#** 作者:Hu
+#** 日期:2014-8-25 19:20:01
+#** 格式:PRO_TransStat "交易日期" "交易流水" "数据库连接信息"
+#***********************************************
+LOCAL_TAB="PBX_CASH_REG_IMP"
+#默认DBInfo
+if [ $# -ge 2 ]
+then
+	ShowFlag=1	#单行还是多行标志
+	LOCAL_TranDate=`echo $1|sed 's/ //g'`
+	LOCAL_SEQNO=`echo $2|sed 's/ //g'`
+	if [ "$3" = "A" ]
+	then
+		LOCAL_DB=${LOCAL_DB_A}
+		DB_Flag=0
+	elif [ "$1" = "H" ]
+	then
+		LOCAL_DB=${LOCAL_DB_H}
+		DB_Flag=1	#历史还是联机标志
+	else 
+		
+		LOCAL_DB=${LOCAL_DB_B}
+		DB_Flag=0
+	fi
+else
+	ShowFlag=0
+	if [ "$1" = "A" ]
+	then
+		LOCAL_DB=${LOCAL_DB_A}
+		DB_Flag=0
+	elif [ "$1" = "H" ]
+	then
+		LOCAL_DB=${LOCAL_DB_H}
+		DB_Flag=1
+	else 
+		
+		LOCAL_DB=${LOCAL_DB_B}
+		DB_Flag=0
+	fi
+fi
+
+if [ $ShowFlag -eq 1 ]	#根据输入值查询--即单行查询
+then
+	#查历史
+	if [ $DB_Flag -eq 1 ]
+	then
+		SQL="col TRAN_DATE heading 交易日期 for a10
+		col SEQNO heading 交易流水 for a20
+		col STAT heading 交易状态 for a20
+		col CASH_FLAG heading 现金标志 for a10
+		col BOX_NO heading 尾箱号 for a10		
+		SELECT t.tran_date,t.seqno,t.cash_flag,t.box_no,
+		       CASE t.stat
+		        WHEN '0' THEN '成功-记账'
+		        WHEN '3' THEN '重发-记账'
+		        WHEN '4' THEN '恢复-不记账'
+		        WHEN '6' THEN '超时成功-记账'
+		        WHEN '7' THEN '失败-不记账'
+		        WHEN '8' THEN '失败-不记账'
+		        ELSE t.stat END stat
+		  FROM pbx_cash_reg_${LOCAL_TranDate} t
+		 WHERE t.tran_date='${LOCAL_TranDate}' and t.seqno='${LOCAL_SEQNO}' and t.serno='1';"
+	else	#查联机
+		SQL="col TRAN_DATE heading 交易日期 for a10
+		col SEQNO heading 交易流水 for a20
+		col STAT heading 交易状态 for a20
+		col CASH_FLAG heading 现金标志 for a10
+		col BOX_NO heading 尾箱号 for a10		
+		SELECT t.tran_date,t.seqno,t.cash_flag,t.box_no,
+		        CASE t.stat
+		        WHEN '0' THEN '成功-记账'
+		        WHEN '3' THEN '重发-记账'
+		        WHEN '4' THEN '恢复-不记账'
+		        WHEN '6' THEN '超时成功-记账'
+		        WHEN '7' THEN '失败-不记账'
+		        WHEN '8' THEN '失败-不记账'
+		        ELSE t.stat END stat		        
+		  FROM pbx_cash_reg t
+		 WHERE t.tran_date='${LOCAL_TranDate}' and t.seqno='${LOCAL_SEQNO}' and t.serno='1';"
+	fi
+	printf "%-10s%-20s%-10s%-10s%-s\n" "交易日期" "交易流水" "现金标志" "尾箱号" "交易状态"
+	echo "==================================================================" 
+	Fun_DB "$LOCAL_DB" "$SQL"
+	
+else	#读文件查询--即多行查询
+echo "当前为<批量查询>"
+echo "DBInfo:$LOCAL_DB"
+echo "TabName:$LOCAL_TAB"
+#File Info
+DataFile="Dat/${LOCAL_TAB}.dat"
+LogFile=Log/TransStat_`Fun_Now "YYYYMMDDHHMISS"`.log
+TmpFile=Log/TransStat.txt
+#导数
+Fun_SQLLDR "$LOCAL_DB" "$LOCAL_TAB"
+if [ $? -ne 0 ]
+then 
+	echo "请检查数据文件(是否是以逗号分隔),数据库[$LOCAL_DB]是否存在该表<$LOCAL_TAB>,以及其它相关信息是否正确."
+else
+	echo "正在查询交易流水状态,请稍等......."
+	cat /dev/null >$LogFile
+	
+	#判断是否是历史库,如果是就按表名加日期查，如果不是就按交易时期查.
+	if [ $DB_Flag -eq 0 ]
+	then
+		for i in `awk -F "," '{print $1}' $DataFile|sort -u|grep -v "^$"`
+		do
+			Trans_date="$Trans_date '$i'"
+		done
+		
+		Trans_date=`echo $Trans_date|sed 's/ /,/g'`
+		SQL="col TRAN_DATE heading 交易日期 for a10
+		col SEQNO heading 交易流水 for a20
+		col STAT heading 交易状态 for a20
+		col BOX_NO heading 尾箱号 for a20
+		col CASH_FLAG heading 现金标志 for a20
+		SELECT a.tran_date,a.seqno,
+		       CASE b.stat
+		        WHEN '0' THEN '成功-记账'
+		        WHEN '3' THEN '重发-记账'
+		        WHEN '4' THEN '恢复-不记账'
+		        WHEN '6' THEN '超时成功-记账'
+		        WHEN '7' THEN '失败-不记账'
+		        WHEN '8' THEN '失败-不记账'
+		        ELSE b.stat END stat,
+		        b.cash_flag,
+		        b.box_no
+		  FROM ${TableName} a,
+		      (SELECT * FROM pbx_cash_reg WHERE tran_date in ($Trans_date) and serno='1') b
+		 WHERE a.seqno=b.seqno(+);"
+		 
+		 #echo "${SQL}"
+		 
+		 Fun_DB "$LOCAL_DB" "$SQL" >> ${LogFile}
+	else
+		for i in `awk -F "," '{print $1}' $DataFile|sort -u|grep -v "^$"`
+		do
+			Trans_date="$i"
+			SQL="col TRAN_DATE heading 交易日期 for a10
+			col SEQNO heading 交易流水 for a20
+			col STAT heading 交易状态 for a20
+			col BOX_NO heading 尾箱号 for a20
+			col CASH_FLAG heading 现金标志 for a20
+			SELECT a.tran_date,a.seqno,
+			       CASE b.stat
+			        WHEN '0' THEN '成功-记账'
+			        WHEN '3' THEN '重发-记账'
+			        WHEN '4' THEN '恢复-不记账'
+			        WHEN '6' THEN '超时成功-记账'
+			        WHEN '7' THEN '失败-不记账'
+			        WHEN '8' THEN '失败-不记账'
+			        ELSE b.stat END stat,
+			        b.cash_flag,
+			        b.box_no
+			  FROM ${TableName} a,
+			      (SELECT * FROM pbx_cash_reg_${Trans_date} WHERE serno='1') b
+			 WHERE a.seqno=b.seqno(+)
+			   AND a.tran_date='${Trans_date}';"
+			   
+			Fun_DB "$LOCAL_DB" "$SQL" >> ${LogFile}
+		done
+	fi
+	
+	#根据数据文件流水对状态顺序进行处理
+	cat /dev/null >${TmpFile}
+	echo ""
+	printf "%-10s%-20s%-10s%-10s%-s\n" "交易日期" "交易流水" "现金标志" "尾箱号" "交易状态"
+	echo "=================================================================="
+	for i in `cat  ${DataFile}`
+	do
+		T_Date=`echo $i|awk -F "," '{print $1 }'`
+		T_Seqno=`echo $i|awk -F "," '{print $2 }'`
+		T_Stat=`grep $T_Seqno ${LogFile}|grep $T_Date|awk '{print $3}'`
+		T_CashFlag=`grep $T_Seqno ${LogFile}|grep $T_Date|awk '{print $4}'`
+		T_BoxNo=`grep $T_Seqno ${LogFile}|grep $T_Date|awk '{print $5}'`
+	        grep $T_Seqno ${LogFile}|grep $T_Date|awk '{print $3}' >>${TmpFile}
+	        printf "%-10s%-20s%-10s%-10s%-s\n" "$T_Date" "$T_Seqno" "$T_CashFlag" "$T_BoxNo" "$T_Stat" 
+	done
+fi
+fi 
+
+}
+
+PRO_ShowTZ(){
+#************************************************
+#** 功能:查询是否挂T字长款
+#** 作者:Hu
+#** 日期:2014-8-25 18:20:46
+#** 格式:PRO_ShowTZ 
+#***********************************************
+LOCAL_DB=${LOCAL_DB_B}
+LOCAL_TAB="PBX_CASH_REG_IMP"
+DBLink_Info="DBLINK_CHMAP"
+
+#File Info
+DataFile="Dat/${LOCAL_TAB}.dat"
+LogFile=Log/ShowTZ_`Fun_Now "YYYYMMDDHHMISS"`.log
+TmpFile=Log/ShowTZ.txt
+#导数
+Fun_SQLLDR "$LOCAL_DB" "$LOCAL_TAB"
+if [ $? -ne 0 ]
+then 
+	echo "请检查数据文件(是否是以逗号分隔),数据库[$LOCAL_DB]是否存在该表<$LOCAL_TAB>,以及其它相关信息是否正确."
+else
+	echo "正在查询是否挂T字长款,请稍等......"
+	cat /dev/null >$LogFile
+	
+	SQL="col TRAN_DATE heading 交易日期 for a10
+		col SEQNO heading 交易流水 for a20
+		col STATS heading 状态 for a20
+		select t.tran_date,t.seqno,decode(t.stat,null,'未挂',1,'已挂(手工)',2,'已挂(自动)','已挂') stats 
+		  from (
+			select a.tran_date,a.seqno,b.stat stat from ${LOCAL_TAB} a,
+			(select tran_date,seqno,1 stat from till_batch_adjust@${DBLink_Info}
+			 union all
+			select tran_date,seqno,2 stat from pbx_error_auto_regist_dtl 
+			) b
+		 	where a.tran_date=b.tran_date(+) and a.seqno=b.seqno(+)
+			) t 
+		  group by t.tran_date,t.seqno,t.stat;"
+		 
+	Fun_DB "$LOCAL_DB" "$SQL" >> ${LogFile}
+	
+	#根据数据文件流水对状态顺序进行处理
+	cat /dev/null >${TmpFile}
+	echo ""
+	printf "%-10s%-20s%-s\n" "交易日期" "交易流水" "交易状态"
+	echo "======================================"
+	for i in `cat  ${DataFile}`
+	do
+		T_Date=`echo $i|awk -F "," '{print $1 }'`
+		T_Seqno=`echo $i|awk -F "," '{print $2 }'`
+		T_Stat=`grep $T_Seqno ${LogFile}|grep $T_Date|awk '{print $3}'`
+		grep $T_Seqno ${LogFile}|grep $T_Date|awk '{print $3}' >>${TmpFile}
+	        printf "%-10s%-20s%-s\n" "$T_Date" "$T_Seqno" "$T_Stat" 
+	done
+fi
+}
+PRO_RESUSAF(){
+#************************************************
+#** 功能:SAF统计
+#** 作者:FP
+#** 日期:2014-8-26 11:23:25
+#** 格式:PRO_RESUSAF 
+#***********************************************
+        Date=`date +%Y%m%d`
+        LOCAL_SQL_ALL="select count(*) from resu_saf where tran_date='$Date';"
+        LOCAL_SQL_FAILD="select count(*) from resu_saf where tran_date='$Date' and recode!='000000';"
+        LOCAL_SQL_SUCESS="select count(*) from resu_saf where tran_date='$Date' and recode='000000';"
+        LOCAL_SQL_NOTSND="select count(*) from resu_saf where tran_date='$Date' and recode is null;"
+        LOCAL_SQL_MSG="select count(*) from resu_saf where tran_date='$Date' and (length(mesg)<=0 or mesg is null);"
+
+
+        LOCAL_SQL_ALL_A=`Fun_DB "$LOCAL_DB_A" "$LOCAL_SQL_ALL"`
+        LOCAL_SQL_ALL_B=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_ALL"`
+
+        LOCAL_SQL_FAILD_A=`Fun_DB "$LOCAL_DB_A" "$LOCAL_SQL_FAILD"`
+        LOCAL_SQL_FAILD_B=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_FAILD"`
+
+        LOCAL_SQL_NOTSND_A=`Fun_DB "$LOCAL_DB_A" "$LOCAL_SQL_NOTSND"`
+        LOCAL_SQL_NOTSND_B=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_NOTSND"`
+
+        LOCAL_SQL_MSG_A=`Fun_DB "$LOCAL_DB_A" "$LOCAL_SQL_MSG"`
+        LOCAL_SQL_MSG_B=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_MSG"`
+
+        LOCAL_SQL_SUCESS_A=`Fun_DB "$LOCAL_DB_A" "$LOCAL_SQL_SUCESS"`
+        LOCAL_SQL_SUCESS_B=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL_SUCESS"`
+
+        count_1=`Fun_BC "scale=0;$LOCAL_SQL_ALL_A+$LOCAL_SQL_ALL_B"`
+        count_2=`Fun_BC "scale=0;$LOCAL_SQL_FAILD_A+$LOCAL_SQL_FAILD_B"`
+        count_3=`Fun_BC "scale=0;$LOCAL_SQL_NOTSND_A+$LOCAL_SQL_NOTSND_B"`
+        count_4=`Fun_BC "scale=0;$LOCAL_SQL_MSG_A+$LOCAL_SQL_MSG_B"`
+        count_5=`Fun_BC "scale=0;$LOCAL_SQL_SUCESS_A+$LOCAL_SQL_SUCESS_B"`
+
+        echo ""
+        printf "\t\t%s\n" "日期：[$Date]"
+        printf "\t\t%-30s\t\t%s\n" "SAF的总笔数为：" "[$count_1]笔"
+        printf "\t\t%-30s\t\t%s\n" "SAF成功的笔数为：" "[$count_5]笔"
+        printf "\t\t%-30s\t\t%s\n" "SAF后台返回失败的总笔数为：" "[$count_2]笔"
+        printf "\t\t%-30s\t\t%s\n" "SAF未发送的总笔数为：" "[$count_3]笔"
+        printf "\t\t%-30s\t\t%s\n" "SAF中BLOB字段为空的总笔数为：" "[$count_4]笔"
+
+}
+
+##########################################>传真核实<######################################
+PRO_LFTZ(){
+#************************************************
+#** 功能:传真问题单核实状态并生成调整语句
+#** 作者:FP
+#** 日期:2014-8-22 14:18:35
+#** 格式:PRO_LFTZ "交易日期" "交易流水"
+#***********************************************
+Now_date=`date +"%Y%m%d"`
+Date=$1;
+
+Exit_Flag=0
+if [ "A" == "A$Date" ]
+then
+	Date="19700101"
+	Exit_Flag=1
+fi
+Date=`echo $Date | sed -e 's/ //g'`
+
+Seqno=$2;
+if [ "A" == "A$Seqno" ]
+then
+	Date="19700101"
+	Exit_Flag=2
+fi
+Seqno=`echo $Seqno | sed -e 's/ //g'`
+
+SQL_DATE_HIS="SELECT trunc(SYSDATE-TO_DATE('$Date','YYYYMMDD')) FROM DUAL;"
+Diff_Date=`Fun_DB "$LOCAL_DB_B" "$SQL_DATE_HIS"`;
+Diff_Date=`echo $Diff_Date| sed -e 's/ //g'`
+
+if [ $Diff_Date -gt 10 ] 
+then
+	LOCAL_SQL="SELECT TRAN_DATE||'|'||SEQNO||'|'||  SERNO||'|'||INST_NO||'|'||BOX_NO||'|'||CRDB||'|'||CASH_FLAG||'|'||TXAMT||'|'||STAT  FROM PBX_CASH_REG_$Date WHERE  SEQNO='$Seqno';"
+	SQL_SELECT_Create="select 'insert into till_batch_adjust  values('||''''||tran_date||''','''||seqno||''','''||1||''','''||inst_no||''','''||tlr_no||''','''||box_no||''','||txamt||','''||'2'||''','''||pcode ||''','''||'1'||''','''||'传真问题单调整'||''','''||' '||''','''||' '||''','''||' '||''','''||' '||''','''||' '||''''||' '||');' from pbx_cash_reg_$Date where tran_date = '$Date' and serno = 1 and seqno = '$Seqno';"				
+
+	CONN="$LOCAL_DB_H"
+else 
+
+LOCAL_SQL="SELECT TRAN_DATE||'|'||SEQNO||'|'||  SERNO||'|'||INST_NO||'|'||BOX_NO||'|'||CRDB||'|'||CASH_FLAG||'|'||TXAMT||'|'||STAT  FROM PBX_CASH_REG WHERE TRAN_DATE='$Date' AND  SEQNO='$Seqno';"
+	SQL_SELECT_Create="select 'insert into till_batch_adjust  values('||''''||tran_date||''','''||seqno||''','''||1||''','''||inst_no||''','''||tlr_no||''','''||box_no||''','||txamt||','''||'2'||''','''||pcode ||''','''||'1'||''','''||'传真问题单调整'||''','''||' '||''','''||' '||''','''||' '||''','''||' '||''','''||' '||''''||' '||');' from pbx_cash_reg where tran_date = '$Date' and serno = 1 and seqno = '$Seqno';"
+
+	CONN="$LOCAL_DB_B"
+
+ fi
+
+#echo "Exit_Flag=${Exit_Flag}"
+if [ ${Exit_Flag} -eq 0 ]
+then
+printf "%-10s%-20s%-10s%-10s%-10s%-10s%-10s%-10s%-10s\n" "日期" "流水" "序号" "机构号" "尾箱号" "收付标志" "现金标志" "金额" "状态" 
+Result=`Fun_DB "$CONN" "$LOCAL_SQL"`
+echo "-------------------------------------------------------------------------------------------"
+echo "$Result" | awk -F "|" '{printf "%-10s%-20s%-10s%-10s%-10s%-10s%-10s%-10.2f%-10s\n",$1,$2,$3,$4,$5,$6,$7,$8,$9}'
+
+echo ""
+echo ""
+
+JG_NO=`echo "$Result"| awk -F "|" '{print $4}' | sort -u`
+echo "查询该机构[$JG_NO]下所有的调整记录"
+LOCAL_SQL="SELECT TRAN_DATE||'|'||SEQNO||'|'||  SERNO||'|'||INST_NO||'|'||BOX_NO||'|'||TXAMT||'|'||CASE CRDB WHEN '1' THEN '1-调增尾箱' WHEN '2' THEN '2-调减尾箱' ELSE CRDB END||'|'||CASE ADJUST_STAT WHEN '1' THEN '1-未调整' WHEN '2' THEN '2-已调整' ELSE ADJUST_STAT END FROM TILL_BATCH_ADJUST WHERE  INST_NO='$JG_NO';"
+
+printf "%-10s%-20s%-10s%-10s%-10s%-10s%-12s%-12s\n" "日期" "流水" "序号" "机构号" "尾箱号" "金额" "调增调减" "调整状态"
+Result=`Fun_DB "$LOCAL_DB_A" "$LOCAL_SQL"`		
+echo "-------------------------------------------------------------------------------------------"
+echo "$Result" | awk -F "|" '{printf "%-10s%-20s%-10s%-10s%-10s%-10.2f%-12s%-12s\n",$1,$2,$3,$4,$5,$6,$7,$8}'
+
+echo "查看该机构[$JG_NO]下自动调整的记录"
+LOCAL_SQL="SELECT TRAN_DATE||'|'||SEQNO||'|'||  CASE CORR_TYPE WHEN '1' THEN '1-调增尾箱' WHEN '2' THEN '2-调减尾箱' ELSE CORR_TYPE END||'|'||ORG_INST_NO||'|'||TXAMT  FROM pbx_error_auto_regist_dtl WHERE  ORG_INST_NO='$JG_NO';"
+
+printf "%-10s%-20s%-20s%-10s%-10s \n" "日期" "流水" "挂账类型" "机构号" "金额"
+Result=`Fun_DB "$LOCAL_DB_B" "$LOCAL_SQL"`		
+echo "-------------------------------------------------------------------------------------------"
+echo "$Result" | awk -F "|" '{printf "%-10s%-20s%-10s%-10s%-10.2f \n",$1,$2,$3,$4,$5}'
+
+echo "按按回车生成调整语句."
+Fun_DB "$CONN" "$SQL_SELECT_Create"
+read
+echo ""
+else
+	echo "输入信息有误，请重新输入.."
+fi
+}
+ 
+
+
+#===============================================================工具==========================================
+
+PRO_OperPasswd(){
+#************************************************
+#** 功能:柜员密码加密
+#** 作者:Hu
+#** 日期:2014/8/28 1:58:08
+#** 格式:PRO_OperPasswd "柜员号"  "密码"
+#***********************************************
+OperNo=$1
+OperPass='000000'
+echo "-------------------------柜员密码初始化语句----------------"
+#${FILE_DIR}/Bin/MD5 ${OperPass} ${OperNo} 
+PASWD=`${FILE_DIR}/Bin/MD5 $OperNo $OperPass|grep -v "\-\-"|awk -F "[" '{print $4}'|sed 's/]//g'|sed 's/operno//g'`
+echo "update ol_operinfo set password='$PASWD',pwnum='0',pwlock='1',initialpw='0' where OPERNO  ='$OperNo';"
+}
+
+
+
+PRO_Cover16CN(){
+#************************************************
+#** 功能:16进制转中文
+#** 作者:Hu
+#** 日期:2014-8-22 14:18:35
+#** 格式:PRO_Cover16CN "16进制码"
+#***********************************************
+code=""
+if [ -z $1 ]
+then
+    echo "请传参.."
+else
+    code=`echo $1|sed 's/[^a-z||0-9||A-Z]//g'`
+    echo "CODE--->[$code]"
+
+    count=`echo $code|wc -c`
+    count=`expr $count  - 1 `
+    i=0
+    while [ $i -lt $count ]
+    do
+        j=`expr $i + 1`
+        i=`expr $i + 4`
+        word=`echo $code|cut -c $j-$i`
+        sql="select chr(to_number('$word','XXXXXXXXX')) msg from dual;"
+        MSG=`echo $sql|sqlplus -S ${LOCAL_DB_A}|grep -v "MS"|grep -v "\-"|grep -v "^$"`
+	#MSG=`Fun_DB "${LOCAL_DB_A}"  "$sql"`
+        INFO="$INFO$MSG"
+    done
+    echo "INFO--->[$INFO]"
+fi
+
+}
+
+PRO_SAF_SELECT(){
+#************************************************
+#** 功能:程序测试
+#** 作者:Hu
+#** 日期:2014-8-22 14:18:35
+#** 格式:RPO_TEST "参数1"  "参数2" "参数3" "..."
+#***********************************************
+
+echo "流水号           交易码      交易名称"
+sql="
+col seqno for a20;
+col pcode for a10;
+col tran_name for a20;
+select seqno,pcode,tran_name from resu_saf a, ch_trans_cfg b where b.tran_code = a.pcode and tran_date='$1' and recode!='000000';"
+
+Fun_DB "${LOCAL_DB_B}"  "$sql"
+
+}
+
+
+PRO_CountNetDataTotOut(){
+#************************************************
+#** 功能:统计网点未签退数据汇总
+#** 作者:Hu
+#** 日期:2014/12/26 20:54:27
+#** 格式:PRO_CountNetDataTotOut "省代字"
+#***********************************************
+trap 'echo "退出!";break' 1 2 3 6 14 15
+#日志信息
+Dt=`Fun_Now "YYYYMMDDHHMISS"`
+LogFile="${FILE_DIR}/Log/TJ_CountOut_${Dt}.txt"
+
+#省代字列表
+List="$*"
+if [ -z "$List" ]
+then
+	SQL_LIST="select substr(deptno,1,2) from ol_deptinfo a where a.deptlevel='02'  group by substr(deptno,1,2) order by 1;"
+	List=`Fun_DB "$LOCAL_DB_B" "$SQL_LIST"`
+fi
+
+echo "报告指挥部，截至`date +%F\ %R `柜员机构签到情况："|tee -a $LogFile
+echo "=======================================================================统计信息======================================================================="|tee -a $LogFile
+for i in $List
+do
+	SQL_DeptNum="select trim(count(*)) from ol_deptinfo a where a.deptlevel='02'  and substr(deptno,1,2)='$i' group by substr(deptno,1,2);"
+	if [ `Fun_DB "$LOCAL_DB_B" "$SQL_DeptNum"` -eq 1 ]
+	then
+		SQL_Updepts="select deptno  from ol_deptinfo a where a.deptlevel='02' and substr(deptno,1,2)='$i';"
+		Updepts=`Fun_DB "$LOCAL_DB_B" "$SQL_Updepts"`		
+		
+		#=========================================Begin======================================#
+		#省名称
+		SQL_SHNAME="select shdeptname from ol_deptinfo a where a.deptno ='$Updepts';"
+		#-签到柜员数"
+		SQL_QDGYS="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+		#-柜员数"
+		SQL_GYS="select trim(count(*)) from ol_opersign a,ol_deptinfo x,ol_operrole c  where a.operno=c.operno and a.sysno=c.sysno and a.perstatus='01'and a.sysstatus='01'and  a.sysno='99700010000' and  a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+		#-自营柜员"
+		SQL_ZYGY="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01' and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) and x.deptqty='01');"
+		#-代理柜员"
+		SQL_DLGY="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty!='01');"
+		#-签到机构数"
+		#SQL_QDJGS="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+		SQL_QDJGS="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signstatus='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+		
+		#-机构数"
+		SQL_JGS="select trim(count(*))  from ol_deptinfo x where   x.deptno like '${i}%'  and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  );  "
+		#-自营机构"
+		SQL_ZYJG="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty='01');"
+		#-代理机构"
+		SQL_DLJG="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty!='01');"
+
+		Count_SHNM=`Fun_DB "$LOCAL_DB_B" "$SQL_SHNAME"|sed 's/ //g'`
+                Count_JGS=`Fun_DB "$LOCAL_DB_B" "$SQL_JGS"|sed 's/ //g'`
+                Count_QDJGS=`Fun_DB "$LOCAL_DB_B" "$SQL_QDJGS"|sed 's/ //g'`
+                Count_GYS=`Fun_DB "$LOCAL_DB_B" "$SQL_GYS"|sed 's/ //g'`
+                Count_QDGYS=`Fun_DB "$LOCAL_DB_B" "$SQL_QDGYS"|sed 's/ //g'`
+                Count_ZYJG=`Fun_DB "$LOCAL_DB_B" "$SQL_ZYJG"|sed 's/ //g'`
+                Count_ZYGY=`Fun_DB "$LOCAL_DB_B" "$SQL_ZYGY"|sed 's/ //g'`
+                Count_DLJG=`Fun_DB "$LOCAL_DB_B" "$SQL_DLJG"|sed 's/ //g'`
+                Count_DLGY=`Fun_DB "$LOCAL_DB_B" "$SQL_DLGY"|sed 's/ //g'`
+		#========================================= End ======================================#
+		
+                printf  "【%-20s】机构总数:%-6s签到机构数:%-6s柜员总数:%-6s签到柜员数:%-6s自营机构数:%-6s自营柜员数:%-6s代理机构数:%-6s代理柜员数:%-6s\n" "$Count_SHNM" "$Count_JGS" "$Count_QDJGS" "$Count_GYS" "$Count_QDGYS" "$Count_ZYJG" "$Count_ZYGY" "$Count_DLJG"  "$Count_DLGY"|tee -a $LogFile
+            
+
+
+	else
+		#根据机构生成文件头	
+		SQL_Updepts2="select deptno from ol_deptinfo t where  t.deptlevel='02' and substr(t.deptno ,1,2) ='$i';"
+		for j in `Fun_DB "$LOCAL_DB_B" "$SQL_Updepts2"`
+		do
+			#=========================================Begin======================================#
+			#省名称
+                	SQL_SHNAME="select shdeptname from ol_deptinfo a where a.deptno ='$j';"
+                	#-签到柜员数"
+                	SQL_QDGYS="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.updepts like '%$j%' and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+                	#-柜员数"
+                	SQL_GYS="select trim(count(*)) from ol_opersign a,ol_deptinfo x,ol_operrole c  where a.operno=c.operno and a.sysno=c.sysno and a.perstatus='01'and a.sysstatus='01'and  a.sysno='99700010000' and  a.deptno=x.deptno and a.deptno like '${i}%' and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+                	#-自营柜员"
+                	SQL_ZYGY="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%'  and x.updepts like '%$j%'  and ((( x.DeptClass='01' and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) and x.deptqty='01');"
+                        #-代理柜员"
+                	SQL_DLGY="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%'  and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty!='01');"
+                	#-签到机构数"
+			#SQL_QDJGS="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1' and a.deptno=x.deptno and a.deptno like '${i}%' and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+			SQL_QDJGS="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signstatus='1' and a.deptno=x.deptno and a.deptno like '${i}%' and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+			
+			#-机构数"
+                	SQL_JGS="select trim(count(*))  from ol_deptinfo x where  x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  );  "
+                	#-自营机构"
+			SQL_ZYJG="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty='01');"
+                	#-代理机构"
+                	SQL_DLJG="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1' and a.deptno=x.deptno and a.deptno like '${i}%'  and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty!='01');"
+						
+			Count_SHNM=`Fun_DB "$LOCAL_DB_B" "$SQL_SHNAME"|sed 's/ //g'`
+	                Count_JGS=`Fun_DB "$LOCAL_DB_B" "$SQL_JGS"|sed 's/ //g'`
+	                Count_QDJGS=`Fun_DB "$LOCAL_DB_B" "$SQL_QDJGS"|sed 's/ //g'`
+	                Count_GYS=`Fun_DB "$LOCAL_DB_B" "$SQL_GYS"|sed 's/ //g'`
+	                Count_QDGYS=`Fun_DB "$LOCAL_DB_B" "$SQL_QDGYS"|sed 's/ //g'`
+	                Count_ZYJG=`Fun_DB "$LOCAL_DB_B" "$SQL_ZYJG"|sed 's/ //g'`
+	                Count_ZYGY=`Fun_DB "$LOCAL_DB_B" "$SQL_ZYGY"|sed 's/ //g'`
+	                Count_DLJG=`Fun_DB "$LOCAL_DB_B" "$SQL_DLJG"|sed 's/ //g'`
+	                Count_DLGY=`Fun_DB "$LOCAL_DB_B" "$SQL_DLGY"|sed 's/ //g'`
+			#========================================= End ======================================#
+				
+			printf  "【%-20s】机构总数:%-6s签到机构数:%-6s柜员总数:%-6s签到柜员数:%-6s自营机构数:%-6s自营柜员数:%-6s代理机构数:%-6s代理柜员数:%-6s\n" "$Count_SHNM" "$Count_JGS" "$Count_QDJGS" "$Count_GYS" "$Count_QDGYS" "$Count_ZYJG" "$Count_ZYGY" "$Count_DLJG"  "$Count_DLGY"|tee -a $LogFile
+ 
+            
+		done
+
+	fi
+		
+done
+echo ""
+trap "" 1 2 3 15
+}
+
+PRO_CountNetDataTotIn(){
+#************************************************
+#** 功能:统计网点已签到数据汇总
+#** 作者:Hu
+#** 日期:2014/12/26 20:54:31
+#** 格式:PRO_CountNetDataTotIn "省代字"
+#***********************************************
+trap 'echo "退出!";break' 1 2 3 6 14 15
+#日志信息
+Dt=`Fun_Now "YYYYMMDDHHMISS"`
+LogFile="${FILE_DIR}/Log/TJ_CountIn_${Dt}.txt"
+
+#省代字列表
+List="$*"
+if [ -z "$List" ]
+then
+	SQL_LIST="select substr(deptno,1,2) from ol_deptinfo a where a.deptlevel='02'  group by substr(deptno,1,2) order by 1;"
+	List=`Fun_DB "$LOCAL_DB_B" "$SQL_LIST"`
+fi
+
+echo "报告指挥部，截至`date +%F\ %R `柜员机构签到情况："|tee -a $LogFile
+echo "=======================================================================统计信息======================================================================="|tee -a $LogFile
+for i in $List
+do
+	SQL_DeptNum="select trim(count(*)) from ol_deptinfo a where a.deptlevel='02'  and substr(deptno,1,2)='$i' group by substr(deptno,1,2);"
+	if [ `Fun_DB "$LOCAL_DB_B" "$SQL_DeptNum"` -eq 1 ]
+	then
+		SQL_Updepts="select deptno  from ol_deptinfo a where a.deptlevel='02' and substr(deptno,1,2)='$i';"
+		Updepts=`Fun_DB "$LOCAL_DB_B" "$SQL_Updepts"`		
+		
+		#=========================================Begin======================================#
+		#省名称
+		SQL_SHNAME="select shdeptname from ol_deptinfo a where a.deptno ='$Updepts';"
+		#-签到柜员数"
+		SQL_QDGYS="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+		#-柜员数"
+		SQL_GYS="select trim(count(*)) from ol_opersign a,ol_deptinfo x,ol_operrole c  where a.operno=c.operno and a.sysno=c.sysno and a.perstatus='01'and a.sysstatus='01'and  a.sysno='99700010000' and  a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+		#-自营柜员"
+		SQL_ZYGY="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01' and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) and x.deptqty='01');"
+		#-代理柜员"
+		SQL_DLGY="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty!='01');"
+		#-签到机构数"
+		SQL_QDJGS="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+		#SQL_QDJGS="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signstatus='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+		
+		#-机构数"
+		SQL_JGS="select trim(count(*))  from ol_deptinfo x where   x.deptno like '${i}%'  and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  );  "
+		#-自营机构"
+		SQL_ZYJG="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty='01');"
+		#-代理机构"
+		SQL_DLJG="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty!='01');"
+
+		Count_SHNM=`Fun_DB "$LOCAL_DB_B" "$SQL_SHNAME"|sed 's/ //g'`
+                Count_JGS=`Fun_DB "$LOCAL_DB_B" "$SQL_JGS"|sed 's/ //g'`
+                Count_QDJGS=`Fun_DB "$LOCAL_DB_B" "$SQL_QDJGS"|sed 's/ //g'`
+                Count_GYS=`Fun_DB "$LOCAL_DB_B" "$SQL_GYS"|sed 's/ //g'`
+                Count_QDGYS=`Fun_DB "$LOCAL_DB_B" "$SQL_QDGYS"|sed 's/ //g'`
+                Count_ZYJG=`Fun_DB "$LOCAL_DB_B" "$SQL_ZYJG"|sed 's/ //g'`
+                Count_ZYGY=`Fun_DB "$LOCAL_DB_B" "$SQL_ZYGY"|sed 's/ //g'`
+                Count_DLJG=`Fun_DB "$LOCAL_DB_B" "$SQL_DLJG"|sed 's/ //g'`
+                Count_DLGY=`Fun_DB "$LOCAL_DB_B" "$SQL_DLGY"|sed 's/ //g'`
+		#========================================= End ======================================#
+		
+                printf  "【%-20s】机构总数:%-6s签到机构数:%-6s柜员总数:%-6s签到柜员数:%-6s自营机构数:%-6s自营柜员数:%-6s代理机构数:%-6s代理柜员数:%-6s\n" "$Count_SHNM" "$Count_JGS" "$Count_QDJGS" "$Count_GYS" "$Count_QDGYS" "$Count_ZYJG" "$Count_ZYGY" "$Count_DLJG"  "$Count_DLGY"|tee -a $LogFile
+            
+
+
+	else
+		#根据机构生成文件头	
+		SQL_Updepts2="select deptno from ol_deptinfo t where  t.deptlevel='02' and substr(t.deptno ,1,2) ='$i';"
+		for j in `Fun_DB "$LOCAL_DB_B" "$SQL_Updepts2"`
+		do
+			#=========================================Begin======================================#
+			#省名称
+                	SQL_SHNAME="select shdeptname from ol_deptinfo a where a.deptno ='$j';"
+                	#-签到柜员数"
+                	SQL_QDGYS="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.updepts like '%$j%' and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+                	#-柜员数"
+                	SQL_GYS="select trim(count(*)) from ol_opersign a,ol_deptinfo x,ol_operrole c  where a.operno=c.operno and a.sysno=c.sysno and a.perstatus='01'and a.sysstatus='01'and  a.sysno='99700010000' and  a.deptno=x.deptno and a.deptno like '${i}%' and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+                	#-自营柜员"
+                	SQL_ZYGY="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%'  and x.updepts like '%$j%'  and ((( x.DeptClass='01' and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) and x.deptqty='01');"
+                        #-代理柜员"
+                	SQL_DLGY="select trim(count(*)) from ol_opersign a , ol_deptinfo x where a.sysno='99700010000' and ( a.signstatus='1' or a.signstatus='2' or a.sigdate='20140524' )  and a.deptno=x.deptno and a.deptno like '${i}%'  and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty!='01');"
+                	#-签到机构数"
+			SQL_QDJGS="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1' and a.deptno=x.deptno and a.deptno like '${i}%' and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+			#SQL_QDJGS="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signstatus='1' and a.deptno=x.deptno and a.deptno like '${i}%' and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+			
+			#-机构数"
+                	SQL_JGS="select trim(count(*))  from ol_deptinfo x where  x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  );  "
+                	#-自营机构"
+			SQL_ZYJG="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty='01');"
+                	#-代理机构"
+                	SQL_DLJG="select trim(count(*)) from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signflag='1' and a.deptno=x.deptno and a.deptno like '${i}%'  and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' ))  and x.deptqty!='01');"
+						
+			Count_SHNM=`Fun_DB "$LOCAL_DB_B" "$SQL_SHNAME"|sed 's/ //g'`
+	                Count_JGS=`Fun_DB "$LOCAL_DB_B" "$SQL_JGS"|sed 's/ //g'`
+	                Count_QDJGS=`Fun_DB "$LOCAL_DB_B" "$SQL_QDJGS"|sed 's/ //g'`
+	                Count_GYS=`Fun_DB "$LOCAL_DB_B" "$SQL_GYS"|sed 's/ //g'`
+	                Count_QDGYS=`Fun_DB "$LOCAL_DB_B" "$SQL_QDGYS"|sed 's/ //g'`
+	                Count_ZYJG=`Fun_DB "$LOCAL_DB_B" "$SQL_ZYJG"|sed 's/ //g'`
+	                Count_ZYGY=`Fun_DB "$LOCAL_DB_B" "$SQL_ZYGY"|sed 's/ //g'`
+	                Count_DLJG=`Fun_DB "$LOCAL_DB_B" "$SQL_DLJG"|sed 's/ //g'`
+	                Count_DLGY=`Fun_DB "$LOCAL_DB_B" "$SQL_DLGY"|sed 's/ //g'`
+			#========================================= End ======================================#
+				
+			printf  "【%-20s】机构总数:%-6s签到机构数:%-6s柜员总数:%-6s签到柜员数:%-6s自营机构数:%-6s自营柜员数:%-6s代理机构数:%-6s代理柜员数:%-6s\n" "$Count_SHNM" "$Count_JGS" "$Count_QDJGS" "$Count_GYS" "$Count_QDGYS" "$Count_ZYJG" "$Count_ZYGY" "$Count_DLJG"  "$Count_DLGY"|tee -a $LogFile
+ 
+            
+		done
+
+	fi
+		
+done
+echo ""
+trap "" 1 2 3 15
+}
+
+PRO_CountNetDataReg(){
+#************************************************
+#** 功能:统计网点未签退明细
+#** 作者:Hu
+#** 日期:2014/12/26 21:17:56
+#** 格式:PRO_CountNetDataReg "省代字"
+#***********************************************
+trap 'echo "退出!";break' 1 2 3 6 14 15
+#日志信息
+Dt=`Fun_Now "YYYYMMDDHHMISS"`
+LogFile="${FILE_DIR}/Log/TJ_MingXi_${Dt}.txt"
+
+#省代字列表
+List="$*"
+if [ -z "$List" ]
+then
+	SQL_LIST="select substr(deptno,1,2) from ol_deptinfo a where a.deptlevel='02'  group by substr(deptno,1,2) order by 1;"
+	List=`Fun_DB "$LOCAL_DB_B" "$SQL_LIST"`
+fi
+
+echo "报告指挥部，截至`date +%F\ %R `机构未签退明细如下："|tee -a $LogFile
+echo "===============机构明细==============="|tee -a $LogFile
+echo  "机构号				机构名称"|tee -a $LogFile
+for i in $List
+do
+	SQL_DeptNum="select count(*) from ol_deptinfo a where a.deptlevel='02'  and substr(deptno,1,2)='$i' group by substr(deptno,1,2);"
+	if [ `Fun_DB "$LOCAL_DB_B" "$SQL_DeptNum"` -eq 1 ]
+	then
+		SQL_Updepts="select deptno  from ol_deptinfo a where a.deptlevel='02' and substr(deptno,1,2)='$i';"
+		Updepts=`Fun_DB "$LOCAL_DB_B" "$SQL_Updepts"`		
+		
+		#=========================================Begin======================================#
+		#省名称
+		SQL_SHNAME="select shdeptname from ol_deptinfo a where a.deptno ='$Updepts';"
+		#-未签退机构明细"
+		SQL_QDJGS="select  x.deptno||'			'||x.shdeptname  from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signstatus='1'    and a.deptno=x.deptno and a.deptno like '${i}%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+		
+		Count_SHNM=`Fun_DB "$LOCAL_DB_B" "$SQL_SHNAME"|sed 's/ //g'`                
+                Count_QDJGS=`Fun_DB "$LOCAL_DB_B" "$SQL_QDJGS"`               
+                
+		#========================================= End ======================================#
+		
+		#echo  "【$Count_SHNM】 "		
+		echo "------------<$Count_SHNM>---------------"|tee -a $LogFile
+		echo "$Count_QDJGS"|tee -a $LogFile
+		echo ""|tee -a $LogFile
+		
+		
+	else		
+		SQL_Updepts2="select deptno from ol_deptinfo t where  t.deptlevel='02' and substr(t.deptno ,1,2) ='$i';"
+		for j in `Fun_DB "$LOCAL_DB_B" "$SQL_Updepts2"`
+		do
+			#=========================================Begin======================================#
+			#省名称
+                	SQL_SHNAME="select shdeptname from ol_deptinfo a where a.deptno ='$j';"
+                	#-签到机构数"
+			SQL_QDJGS="select  x.deptno||'			'||x.shdeptname   from ol_deptsign a ,ol_deptinfo x where a.sysno='99700010000' and a.signstatus='1' and a.deptno=x.deptno and a.deptno like '${i}%' and x.updepts like '%$j%' and ((( x.DeptClass='01'and x.DEPTFUN='03') or (x.childtype ='04' and x.deptclass='05' )) );"
+			
+			Count_SHNM=`Fun_DB "$LOCAL_DB_B" "$SQL_SHNAME"|sed 's/ //g'`	                
+	                Count_QDJGS=`Fun_DB "$LOCAL_DB_B" "$SQL_QDJGS"`
+	               	##========================================= End ======================================#
+				
+			#echo  "【$Count_SHNM】 "|tee -a $LogFile			
+			echo "------------<$Count_SHNM>--------------------"|tee -a $LogFile
+			echo "$Count_QDJGS"|tee -a $LogFile
+			echo ""|tee -a $LogFile
+		done
+
+	
+	fi
+		
+done
+echo ""
+trap "" 1 2 3 15
+}
+
+
+
+PRO_TEST(){
+#************************************************
+#** 功能:程序测试
+#** 作者:Hu
+#** 日期:2014-8-22 14:18:35
+#** 格式:RPO_TEST "参数1"  "参数2" "参数3" "..."
+#***********************************************
+echo "PRO_TEST："
+echo "0=$0,1=$1,2=$2,3=$3,4=$4,5=$5,6=$6,7=$7,8=$8,9=$9,\#=$#"
+
+}

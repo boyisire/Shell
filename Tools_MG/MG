@@ -1,0 +1,214 @@
+#!/bin/sh
+#*******************************************************************************
+#* @Subject  *: 渠道管理运维平台
+#* @Editor   *: PC、Hu、FP
+#* @CreDate  *: 2014-8-21 16:21:28
+#* @Version  *: V1.0.0
+#* @Describe *: 该程序主要用来对渠道管理平台进行各项维护及常用的数据统计
+#* 		ShellFunc.lib 		自定义常用的功能类函数 
+#* 		ShellProc.lib		自定义常用的过程类函数
+#*******************************************************************************
+trap "" 1 2 3 15
+#加载程序 
+cd ${HOME}/bin/TOOLS/
+. ./Bin/ShellProc.lib
+
+#==========================================Config======================================#
+#配置文件
+MENUFILE="${FILE_CFG}"
+#菜单级别
+CURRLEVEL=0
+#当前菜单
+CURRMENU="menu"
+#上级菜单
+UPMENU="menu"
+#菜单行宽
+LINEWIDTH=72
+#菜单列宽
+COL=3
+
+
+#==========================================Function====================================#
+M_Pro_Title(){
+#************************************************
+#** 功能:主菜单头部
+#** 作者:Hu
+#** 日期:2014-8-21 14:40:48
+#** 格式:M_Pro_Title 
+#***********************************************
+clear
+printf "******************************* 渠道管理运维平台 **********************************\n"
+printf "%-50s %-50s\n" "* 当前用户及IP:${LOCAL_SYSNAME}@${LOCAL_IP}"                 		"当前时间:`Fun_Now`   *"
+printf "%-50s %-50s\n" "* 当前目录:`pwd`"  	                "当日流水表:`Fun_TransTab`    *"
+printf "***********************************************************************************\n"
+echo ""
+}
+
+
+M_Pro_End(){
+#************************************************
+#** 功能:主菜单尾部
+#** 作者:Hu
+#** 日期:2014-8-21 14:40:48
+#** 格式:M_Pro_End 
+#***********************************************
+echo ""
+echo "**********************************************************************************"
+echo "*                                     帮助:h    退出:q    回上级:0   中止:Ctrl+C *"
+echo "**********************************************************************************"
+printf "请选择：" 
+read answer
+}
+
+
+M_ListMenu(){
+#************************************************
+#** 功能:主函数-实现菜单的控制及程序调用.
+#** 作者:PC
+#** 日期:2014-8-21 14:40:48
+#** 格式:M_ListMenu （该函数使用了递归的思路）
+#***********************************************
+
+M_Pro_Title
+if [ "$CURRMENU" = "menu" ] ;then UPMENU="menu"; fi
+MENURESULT=`cat $MENUFILE | grep -v "#" |awk -F "|" '$3=="'$CURRMENU'" {printf "%s\n",$2}'`
+#当前行
+LINE=`cat $MENUFILE | grep -v "#" | awk -F "|" '$2=="'$CURRMENU'" && $3=="'$UPMENU'" {printf "%-30s\n",$0}'`
+COLCOUNT=`echo "$LINE" |awk -F "|" '{print NF}'`
+TOTALNUM=`cat $MENUFILE | awk -F "|" '$3=="'$CURRMENU'" {printf "%s\n",$2}' |wc -l`
+
+#菜单排列部分
+if [ $TOTALNUM -gt 20 ]
+then
+    COL=3
+else
+    if [ $TOTALNUM -gt 10 ]
+    then
+        COL=2
+    else
+        COL=1
+    fi
+fi
+
+#菜单序号部分
+NUM=1
+LINECON=""
+EVERYWIDTH=`expr $LINEWIDTH \/ $COL`
+for i in `echo $MENURESULT`
+do
+    COMM="printf \t%2s.%-${EVERYWIDTH}s $NUM $i"
+    COMMRESULT=`$COMM`
+    LINECON=${LINECON}${COMMRESULT}
+    newlineflag=`expr $NUM % $COL`
+    if [ $newlineflag -eq 0 ]
+    then
+        echo "$LINECON"
+        LINECON=""
+    else
+        if [ $NUM -eq $TOTALNUM ]
+        then
+            echo "$LINECON"
+            LINECON=""
+        fi
+    fi
+    NUM=$(($NUM + 1))
+done
+
+NUM=1
+
+#选择输入
+M_Pro_End
+
+if [ $answer = "q" -o $answer = "Q" ]
+then
+    	exit
+elif [ $answer = "h" -o $answer = "H" ]
+then
+	echo "帮助信息："
+	echo "请退出后用 <sh $0 --HELP [程序名]>进行查询."
+	read
+fi
+
+if [ $answer -eq 0 ]
+then
+    CURRMENU=$UPMENU
+    UPMENU=`cat $MENUFILE | grep -v "#" |awk -F "|" '$2=="'$CURRMENU'" {printf "%s\n",$3}'`
+else
+    for i in `echo $MENURESULT`
+    do
+        if [ $answer -eq $NUM ]
+            then
+            UPMENU=$CURRMENU
+            CURRMENU=$i
+        fi
+        NUM=$(($NUM + 1))
+    done
+fi
+
+clear
+M_Pro_Title
+
+LINE=`cat $MENUFILE | grep -v "#" | awk -F "|" '$2=="'$CURRMENU'" && $3=="'$UPMENU'" {printf "%s\n",$0}'`
+COLCOUNT=`echo "$LINE" |awk -F "|" '{print NF}'`
+
+#程序执行
+if [ $COLCOUNT -ge 5 ]
+then
+	#取得实现该功能的函数名
+	PROGNAME=`echo "$LINE" | awk -F "|" '{print $4}'`
+	ARGVNAME=`echo "$LINE" | awk -F "|" '{print $5}'`
+	if [ -z "$ARGVNAME" ]
+   	then
+		#执行不带参数程序
+		eval "$PROGNAME"
+	else		
+		AVGLIST=""
+		for arg in `echo $ARGVNAME|sed 's/,/ /g'`
+		do
+			AVG_NAME=`echo $arg|cut -d ':' -f 1`
+			AVG_DESC=`echo $arg|cut -d ':' -f 2`
+			printf "$AVG_DESC:"
+			eval "read $AVG_NAME"
+			AVGLIST="${AVGLIST} \$${AVG_NAME}"
+		done
+		#执行参数程序
+		eval "$PROGNAME $AVGLIST"		
+	fi
+	
+	read
+	CURRMENU=$UPMENU
+	UPMENU=`cat $MENUFILE | awk -F "|" '$2=="'$CURRMENU'" {printf "%s\n",$3}'`	
+fi
+
+#递归调用该程序
+M_ListMenu
+}
+
+#==========================================Main====================================#
+M_LogFile="${FILE_DIR}/Log/MG_`Fun_Now "YYYYMMDD"`.log"
+
+if [ $# -ne 0 ]
+then
+    clear
+	if [ "$1" = "--HELP" ]
+	then
+		if [ -z "$2" ]
+		then	
+		#	clear
+			echo "程序快捷执行方式：sh $0 程序名 参数1 参数2 参数n"
+			echo ""
+			grep '#** 格式' ${FILE_PUB}
+			exit
+		else
+			cat $MENUFILE | grep -v "#" |grep "$2"|awk -F "|" '{printf "菜单名:%s\n",$2}'
+			grep '#** 格式' ${FILE_PUB}|grep -iw "$2"
+			cat $MENUFILE | grep -v "#" |grep "$2"|awk -F "|" '{printf "描述信息:%s\n",$6}'
+		fi
+    echo ""
+	else
+		eval "$1 $2 $3 $4 $5 $6 $7 $8 $9 "|tee -a ${M_LogFile}
+	fi
+	
+else
+	M_ListMenu |tee -a ${M_LogFile}
+fi

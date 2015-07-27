@@ -1,0 +1,15 @@
+#系统名称|系统代字|开关(0-开,1-关)
+逻辑集中|ljjz_server|0
+渠道尾箱|qdwx_server|0
+清算前置|qsqz_server|0
+客户信息|khxx_server|0
+密管平台|qdmg_server|0
+公司业务|gsyw_server|0
+指纹系统|qdzw_server|0
+令牌系统|qdlp_server|0
+短信平台|qddx_server|0
+渠道查询|qdcx_server|0
+渠道管理|qdgl_server|0
+渠道总体|qdzt_server|0
+渠道远程|remote_server|0
+其它服务|other_server|0

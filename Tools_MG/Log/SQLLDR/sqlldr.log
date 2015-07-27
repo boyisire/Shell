@@ -1,0 +1,48 @@
+
+SQL*Loader: Release 11.2.0.3.0 - Production on Thu Aug 28 16:11:17 2014
+
+Copyright (c) 1982, 2011, Oracle and/or its affiliates.  All rights reserved.
+
+Control File:   Log/SQLLDR/sqlldr.cfg
+Data File:      ./Dat/PBX_CASH_REG_IMP.dat
+  Bad File:     Log/SQLLDR/sqlldr.bad
+  Discard File:  none specified
+ 
+ (Allow all discards)
+
+Number to load: ALL
+Number to skip: 0
+Errors allowed: 50
+Bind array:     64 rows, maximum of 256000 bytes
+Continuation:    none specified
+Path used:      Conventional
+
+Table PBX_CASH_REG_IMP, loaded from every logical record.
+Insert option in effect for this table: TRUNCATE
+
+   Column Name                  Position   Len  Term Encl Datatype
+------------------------------ ---------- ----- ---- ---- ---------------------
+TRAN_DATE                           FIRST     *   ,       CHARACTER            
+SEQNO                                NEXT     *   ,       CHARACTER            
+
+
+Table PBX_CASH_REG_IMP:
+  27 Rows successfully loaded.
+  0 Rows not loaded due to data errors.
+  0 Rows not loaded because all WHEN clauses were failed.
+  0 Rows not loaded because all fields were null.
+
+
+Space allocated for bind array:                  33024 bytes(64 rows)
+Read   buffer bytes: 1048576
+
+Total logical records skipped:          0
+Total logical records read:            27
+Total logical records rejected:         0
+Total logical records discarded:        0
+
+Run began on Thu Aug 28 16:11:17 2014
+Run ended on Thu Aug 28 16:11:17 2014
+
+Elapsed time was:     00:00:00.21
+CPU time was:         7586:56:08.36
