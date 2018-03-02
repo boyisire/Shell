@@ -1,0 +1,204 @@
+#!/usr/bin/bash
+#*******************************************************************************
+#* Subject  *: Shell脚本公共函数
+#* Editor   *: Hu
+#* CreDate  *: 2013-11-08 10:42:21
+#* ModDate  *: 2013-11-08 15:53:08
+#* Describe *: 自定义一些常用的变量、函数,为以后Shell脚本开发提高效率.例用方法参照 Examples.
+#* Funtion  *:
+#		Fun_DB		连接ORACLE数据库
+#		Fun_BC		数学计算
+#		Fun_ExecTime	统计程序执行耗时
+#		Fun_Now	当前时间
+#		Fun_Split	分割文件
+#		Fun_FTP		上传下载文件
+#*******************************************************************************
+
+#**********************************Plubic Variable**********************************#
+#Ooracle DB Info
+DB_USER=eximtrx
+DB_PASS=eximtrx
+DB_LINK=$ORACLE_SID
+
+#Procedure Execute Time
+BegExecTime=`date +%s`
+EndExecTime=`date +%s`
+
+#OS System　Info
+Curr_User=`whoami`
+
+
+#**********************************Plubic Function**********************************#
+Fun_DB(){
+#************************************************
+#** 功能:连接ORACLE数据库
+#** 作者:Hu
+#** 日期:2012-11-08 15:29:05
+#** 格式:Fun_DB  "SQL语句"
+#***********************************************
+LOCAL_DB=$DB_USER/$DB_PASS@$DB_LINK
+SQL_RES=`echo "select '' from dual;"|sqlplus -S $LOCAL_DB|grep -v "'"|grep -v "\-"`
+if [ -n "$SQL_RES" ];then echo "数据库连接有误,请查证连接信息.";exit 1;fi
+
+sqlplus -S $LOCAL_DB <<EOF
+set echo off
+set head off
+set heading off
+set space 0
+set termout off
+set headsep off
+set newpage none
+set linesize 150
+set pagesize 2200
+set lines 800
+set sqlblanklines OFF
+set trimout on
+set trimspool ON
+set termout off
+set feedback off
+
+$1
+
+quit;
+EOF
+}
+
+Fun_BC(){
+#************************************************
+#** 功能:数学计算
+#** 作者:Hu
+#** 日期:2013-11-08 15:30:06
+#** 格式:Fun_BC  "操作语句"
+#**   注:scale指小数点后面的位数.
+#***********************************************
+bc <<EOF
+scale=2;
+$1
+EOF
+}
+
+Fun_ExecTime(){
+#************************************************
+#** 功能:程序执行耗时统计
+#** 作者:Hu
+#** 日期:2013-11-08 15:29:05
+#** 格式:Fun_ExecTime "开始时间" "结束时间"
+#***********************************************
+tmp_SumTime=`echo|awk '{print ('$2-$1')/60}'`
+printf "执行总耗时:%3s分钟.\n" "$tmp_SumTime"
+}
+
+Fun_Now(){
+#************************************************
+#** 功能:当前时间(默认格式为:YYYY-MM-DD HH:MI:SS)
+#** 作者:Hu
+#** 日期:2013-11-08 15:30:29
+#** 格式:Fun_ExecTime "参数格式[组合这些即可:YYYY MM DD HH MI SS]"
+#**   注:默认格式为<YYYY-MM-DD HH:MI:SS>,其它则输入相应的参数即可,不够根据格式自加即可.
+#***********************************************
+case "$1" in
+YYYY|yyyy) Tmp_DT=`date +'%Y'`
+;;
+MM|mm) Tmp_DT=`date +'%m'`
+;;
+DD|dd) Tmp_DT=`date +'%d'`
+;;
+YYYYMMDD|YYYYMMDD) Tmp_DT=`date +'%Y%m%d'`
+;;
+YYYY-MM-DD|yyyy-mm-dd) Tmp_DT=`date +'%Y-%-m-%d'`
+;;
+HHMISS|hhmiss) Tmp_DT=`date +'%H%M%S'`
+;;
+HH-MI-SS|hh-mi-ss) Tmp_DT=`date +'%H%:M:%S'`
+;;
+YYYYMMDDHHMISS|yyymmddhhmiss) Tmp_DT=`date +'%Y%m%d%H%M%S'`
+;;
+*) Tmp_DT=`date +'%Y-%m-%d %H:%M:%S'`
+;;
+esac
+echo "$Tmp_DT"
+}
+
+Fun_Split(){
+#***************************************************
+#** 功能:分割文件
+#** 作者:Hu
+#** 日期:2013-11-08 15:30:40                                
+#** 格式:Fun_Split "行数/大小" "源文件名" "子文件前缀" "分割方式"
+#**   注:1为按行分割[该行数是根据大小计算而得],0为按大小分隔[默认]
+#***************************************************
+if [ "$4" == "1" ]
+then	
+	split -l $1 $2 $3
+else	
+	split -b "$1m" $2 $3
+fi
+}
+
+Fun_FTP(){
+#***************************************************
+#** 功能:用FTP方式上传下载文件
+#** 作者:Hu
+#** 日期:2013-11-08 16:04:49                               
+#** 格式:Fun_FTP "用户" "密码" "远程地址" "远程路径" "本地路径" "文件名[也可以是文件前缀]" "模式[上传=0;下载=1]"
+#**   注:最后的参数"模式"，如果省略，则默认其为上传.                 
+#***************************************************
+if [ $# -le 6 ]
+then
+	echo "Fun_FTP()  参数不正确,请查证." 
+else
+	FTP_USER=$1	#远程用户	
+	FTP_PASS=$2	#远程密码
+	FTP_HOST=$3	#远程地址
+	FTP_RDIR=$4	#远程路径
+	FTP_LDIR=$5	#本地路径
+	FTP_FILE=$6	#上传文件
+
+	cd $FTP_LDIR
+	for tmp_File in "$FTP_FILE"
+	do
+		if [ "$7" == "1" ]
+		then
+			Exec_STR="get $tmp_File"
+		else
+			Exec_STR="put $tmp_File"
+		fi
+		
+		ftp -ivn $FTP_HOST <<FTPEOF
+		user $FTP_USER $FTP_PASS
+		cd $FTP_RDIR
+		$Exec_STR
+		quit
+FTPEOF
+	done
+fi
+}
+
+
+
+#**********************************Examples**********************************#
+#1.
+#SQL_STR="select * from batch_date;"
+#Fun_DB "$SQL_STR"
+
+#2.
+#BC_STR="a=5/2;b=3*10;scale=0;b/a"
+#Fun_BC "$BC_STR"
+
+#3.
+#EndExecTime=`expr $BegExecTime + 75`
+#Fun_ExecTime "$BegExecTime" "$EndExecTime"
+
+#4.
+#Fun_Now yyyy
+#Fun_Now YYYYMMDDHHMISS
+#Fun_Now 
+#Fun_Now "YYYY-MM-DD" 
+
+#5.
+#Fun_Split "10" "test.txt" "Test_"
+
+#6.
+#Fun_FTP "dcdst01" "dcdst01" "22.188.20.46" "/dcds/Test/" `pwd` "GTS.*" "0"
+#Fun_FTP "dcdst01" "dcdst01" "22.188.20.46" "/dcds/Test/" `pwd` "GTS.txt" "1"
+#Fun_FTP "dcdst01" "dcdst01" "22.188.20.46" "/dcds/Test/" `pwd` 
